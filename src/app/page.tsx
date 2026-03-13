@@ -64,9 +64,15 @@ import type { AISuggestion } from "@/lib/ai/types";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-// Set Mapbox access token
-mapboxgl.accessToken =
-  "pk.eyJ1IjoiZWlteWF0bW9uIiwiYSI6ImNtaHM3c2JtODBxbHMycnI4dTljeTBhOGMifQ.hvR26kiNlnorTCJ1hdN5nQ";
+// Set Mapbox access token from env (client-exposed)
+const mapboxToken =
+  process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.MAPBOX_ACCESS_TOKEN;
+
+if (!mapboxToken) {
+  console.warn("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN.");
+} else {
+  mapboxgl.accessToken = mapboxToken;
+}
 
 interface Pin {
   id: string;
