@@ -1,4 +1,26 @@
 import { supabase } from '@/lib/supabase'
+import { createNotification } from '@/services/notifications'
+import { consumeOrganizationSupplies } from '@/services/inventory'
+
+const GEOCODE_CACHE_TTL_MS = 1000 * 60 * 30
+const GEOCODE_RATE_LIMIT_COOLDOWN_MS = 1000 * 60
+const geocodeCache = new Map<string, { address: string; timestamp: number }>()
+const geocodeInFlight = new Map<string, Promise<{ success: boolean; address?: string; error?: string }>>()
+let geocodeRateLimitedUntil = 0
+
+function getGeocodeCacheKey(lat: number, lng: number): string {
+  return `${lat.toFixed(6)},${lng.toFixed(6)}`
+}
+
+function getCachedGeocode(cacheKey: string): string | null {
+  const cached = geocodeCache.get(cacheKey)
+  if (!cached) return null
+  if (Date.now() - cached.timestamp > GEOCODE_CACHE_TTL_MS) {
+    geocodeCache.delete(cacheKey)
+    return null
+  }
+  return cached.address
+}
 
 export interface Pin {
   id: string
@@ -55,7 +77,7 @@ export async function isUserActiveTracker(userId: string): Promise<boolean> {
       .select('id')
       .eq('user_id', userId)
       .eq('status', 'active')
-      .single()
+      .maybeSingle()
 
     if (error) {
       // No tracker record found - this is expected for regular users
@@ -78,7 +100,7 @@ export async function isUserOrganization(userId: string): Promise<boolean> {
       .from('organizations')
       .select('id')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
 
     if (error) {
       // No organization record found
@@ -200,7 +222,7 @@ export async function createPin(
       .from('pins')
       .insert([pinData])
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       console.error('Error creating pin:', {
@@ -447,6 +469,78 @@ export async function fetchPins(): Promise<{ success: boolean; pins?: Pin[]; err
   }
 }
 
+async function notifyPinConfirmed(pinId: string) {
+  try {
+    const { data: pin, error: pinError } = await supabase
+      .from('pins')
+      .select('id, user_id, type, description, phone, latitude, longitude, confirmed_at')
+      .eq('id', pinId)
+      .maybeSingle()
+
+    if (pinError || !pin) {
+      console.warn('[pin_notifications] Failed to load confirmed pin for notification', pinError)
+      return
+    }
+
+    const normalizedType = pin.type === 'damage' ? 'damaged' : 'safe'
+    const description = typeof pin.description === 'string' ? pin.description.trim() : ''
+    const shortDescription = description.length > 140 ? `${description.slice(0, 137)}...` : description
+    const payload = {
+      pin_id: pin.id,
+      type: normalizedType,
+      status: 'confirmed',
+      description: pin.description,
+      phone: pin.phone,
+      lat: pin.latitude,
+      lng: pin.longitude,
+      confirmed_at: pin.confirmed_at,
+    }
+
+    const organizationTitle = normalizedType === 'damaged'
+      ? 'Confirmed Help Request'
+      : 'Confirmed Safe Location'
+    const organizationBody = shortDescription || 'A tracker confirmed a pin and it is ready for organization review.'
+
+    const ownerTitle = 'Your Pin Was Confirmed'
+    const ownerBody = normalizedType === 'damaged'
+      ? 'Your help request was confirmed and sent to organizations.'
+      : 'Your safe location report was confirmed.'
+
+    const { data: organizations, error: organizationsError } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('status', 'active')
+
+    if (organizationsError) {
+      console.warn('[pin_notifications] Failed to load organizations for confirmed pin', organizationsError)
+    } else if (organizations?.length) {
+      await Promise.allSettled(
+        organizations.map((organization: { id: string }) =>
+          createNotification({
+            organizationId: organization.id,
+            type: 'pin_confirmed',
+            title: organizationTitle,
+            body: organizationBody,
+            payload,
+          })
+        )
+      )
+    }
+
+    if (pin.user_id) {
+      await createNotification({
+        userId: pin.user_id,
+        type: 'pin_confirmed_owner',
+        title: ownerTitle,
+        body: ownerBody,
+        payload,
+      })
+    }
+  } catch (notificationError) {
+    console.error('[pin_notifications] Failed to send pin confirmed notifications', notificationError)
+  }
+}
+
 /**
  * Update pin status from pending to confirmed
  * Only trackers can confirm pins (change status to 'confirmed')
@@ -458,8 +552,22 @@ export async function updatePinStatus(
   userId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    let pinBeforeStatus: string | null = null
+
     // If attempting to confirm a pin, verify user is a tracker
     if (newStatus === 'confirmed') {
+      const { data: existingPin, error: pinLoadError } = await supabase
+        .from('pins')
+        .select('status')
+        .eq('id', pinId)
+        .maybeSingle()
+
+      if (pinLoadError) {
+        console.error('Failed to load pin before confirm:', pinLoadError)
+      } else {
+        pinBeforeStatus = existingPin?.status ?? null
+      }
+
       if (!userId || !confirmedByMemberId) {
         console.error('Authorization check failed: Missing userId or confirmedByMemberId')
         return { success: false, error: 'Only trackers can confirm pins' }
@@ -492,6 +600,10 @@ export async function updatePinStatus(
       return { success: false, error: error.message }
     }
 
+    if (newStatus === 'confirmed' && pinBeforeStatus !== 'confirmed') {
+      await notifyPinConfirmed(pinId)
+    }
+
     return { success: true }
   } catch (err) {
     console.error('Error in updatePinStatus:', err)
@@ -509,7 +621,7 @@ export async function getUserOrgMember(userId: string): Promise<{ id: string } |
       .select('id')
       .eq('user_id', userId)
       .eq('status', 'active')
-      .single()
+      .maybeSingle()
 
     if (error) {
       return null
@@ -772,32 +884,63 @@ export async function getReverseGeocodedAddress(
       return { success: false, error: 'Coordinates out of range' }
     }
 
-    const response = await fetch('/api/reverse-geocode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lat, lng }),
-    })
-
-    let data: any
-    try {
-      data = await response.json()
-    } catch {
-      console.error('Failed to parse response as JSON. Status:', response.status, 'Coordinates:', { lat, lng })
-      return { success: false, error: `HTTP ${response.status}` }
+    const cacheKey = getGeocodeCacheKey(lat, lng)
+    const cachedAddress = getCachedGeocode(cacheKey)
+    if (cachedAddress) {
+      return { success: true, address: cachedAddress }
     }
 
-    if (!response.ok) {
-      console.error('Reverse geocoding error (status:', response.status, 'Coordinates:', { lat, lng }, '):', data)
-      return { success: false, error: data?.error || `HTTP ${response.status}` }
+    if (Date.now() < geocodeRateLimitedUntil) {
+      return { success: false, error: 'Rate limited' }
     }
 
-    const address = data.primary_address || 'Address not found'
-    console.log('✅ Geocoded address:', { lat, lng, address })
-    
-    return {
-      success: true,
-      address,
+    const inFlight = geocodeInFlight.get(cacheKey)
+    if (inFlight) {
+      return await inFlight
     }
+
+    const requestPromise = (async () => {
+      try {
+        const response = await fetch('/api/reverse-geocode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+        })
+
+        let data: any
+        try {
+          data = await response.json()
+        } catch {
+          console.error('Failed to parse response as JSON. Status:', response.status, 'Coordinates:', { lat, lng })
+          return { success: false, error: `HTTP ${response.status}` }
+        }
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            geocodeRateLimitedUntil = Date.now() + GEOCODE_RATE_LIMIT_COOLDOWN_MS
+            console.warn('Reverse geocoding rate-limited (429). Cooling down for 60s.', { lat, lng })
+            return { success: false, error: 'Rate limited' }
+          }
+
+          console.error('Reverse geocoding error (status:', response.status, 'Coordinates:', { lat, lng }, '):', data)
+          return { success: false, error: data?.error || `HTTP ${response.status}` }
+        }
+
+        const address = data.primary_address || 'Address not found'
+        geocodeCache.set(cacheKey, { address, timestamp: Date.now() })
+        console.log('✅ Geocoded address:', { lat, lng, address })
+
+        return {
+          success: true,
+          address,
+        }
+      } finally {
+        geocodeInFlight.delete(cacheKey)
+      }
+    })()
+
+    geocodeInFlight.set(cacheKey, requestPromise)
+    return await requestPromise
   } catch (err) {
     console.error('Error in getReverseGeocodedAddress:', err)
     return { success: false, error: 'Failed to fetch address' }
@@ -954,43 +1097,43 @@ export async function fetchConfirmedPinsForDashboard(): Promise<{
       })
       .filter(Boolean)
 
-    // Geocode addresses for all help requests (skip if invalid coordinates)
-    const geocodedRequests = await Promise.all(
-      helpRequests.map(async (request: any) => {
-        // Validate coordinates before geocoding
-        const hasValidCoords = typeof request.lat === 'number' && 
-                               typeof request.lng === 'number' && 
-                               !isNaN(request.lat) && 
-                               !isNaN(request.lng) &&
-                               request.lat >= -90 && 
-                               request.lat <= 90 &&
-                               request.lng >= -180 && 
-                               request.lng <= 180
-        
-        let region = 'Location unknown'
-        let location = 'Location unknown'
-        
-        if (hasValidCoords) {
-          const geoResult = await getReverseGeocodedAddress(request.lat, request.lng)
-          if (geoResult.success && geoResult.address) {
-            region = geoResult.address
-            location = geoResult.address
-          }
-        } else {
-          console.warn('Skipping geocoding for invalid coordinates:', { 
-            lat: request.lat, 
-            lng: request.lng,
-            pinId: request.id 
-          })
+    // Geocode addresses sequentially to avoid rate limiting (skip if invalid coordinates)
+    const geocodedRequests: any[] = []
+    const safeRequests = helpRequests.filter((request): request is NonNullable<typeof request> => !!request)
+
+    for (const request of safeRequests) {
+      const hasValidCoords = typeof request.lat === 'number' &&
+                             typeof request.lng === 'number' &&
+                             !isNaN(request.lat) &&
+                             !isNaN(request.lng) &&
+                             request.lat >= -90 &&
+                             request.lat <= 90 &&
+                             request.lng >= -180 &&
+                             request.lng <= 180
+
+      let region = 'Location unknown'
+      let location = 'Location unknown'
+
+      if (hasValidCoords) {
+        const geoResult = await getReverseGeocodedAddress(request.lat, request.lng)
+        if (geoResult.success && geoResult.address) {
+          region = geoResult.address
+          location = geoResult.address
         }
-        
-        return {
-          ...request,
-          region,
-          location,
-        }
+      } else {
+        console.warn('Skipping geocoding for invalid coordinates:', {
+          lat: request.lat,
+          lng: request.lng,
+          pinId: request.id
+        })
+      }
+
+      geocodedRequests.push({
+        ...request,
+        region,
+        location,
       })
-    )
+    }
 
     return { success: true, helpRequests: geocodedRequests }
   } catch (err) {
@@ -1014,10 +1157,50 @@ export async function acceptHelpRequestItems(
   acceptedItems: Array<{
     pinItemId: string
     acceptedQuantity: number
-  }>
+  }>,
+  organizationId?: string
 ): Promise<{ success: boolean; completed?: boolean; error?: string }> {
   try {
     console.log(`📝 Accepting items for pin ${pinId}`)
+
+    let inventoryItems: Array<{
+      itemId?: string | null
+      itemName: string
+      unit?: string
+      quantity: number
+    }> = []
+
+    if (organizationId && acceptedItems.length > 0) {
+      const pinItemIds = acceptedItems.map(item => item.pinItemId)
+      const acceptedMap = new Map(acceptedItems.map(item => [item.pinItemId, item.acceptedQuantity]))
+
+      const { data: itemDetails, error: detailsError } = await supabase
+        .from('pin_items')
+        .select(
+          `
+          id,
+          item_id,
+          items (
+            name,
+            unit
+          )
+        `
+        )
+        .in('id', pinItemIds)
+
+      if (detailsError) {
+        console.warn('Failed to load pin item details for inventory:', detailsError.message)
+      } else if (itemDetails) {
+        inventoryItems = itemDetails
+          .map((row: any) => ({
+            itemId: row.item_id,
+            itemName: row.items?.name || 'Unknown',
+            unit: row.items?.unit || '',
+            quantity: acceptedMap.get(row.id) || 0,
+          }))
+          .filter(item => item.quantity > 0)
+      }
+    }
 
     // Update each pin_item with the accepted quantity
     for (const item of acceptedItems) {
@@ -1026,7 +1209,7 @@ export async function acceptHelpRequestItems(
         .from('pin_items')
         .select('requested_qty, remaining_qty')
         .eq('id', item.pinItemId)
-        .single()
+        .maybeSingle()
 
       if (fetchError || !pinItem) {
         console.error('Error fetching pin_item:', fetchError)
@@ -1055,6 +1238,20 @@ export async function acceptHelpRequestItems(
     }
 
     console.log(`✅ All items updated for pin ${pinId}`)
+
+    if (organizationId && inventoryItems.length > 0) {
+      const inventoryResult = await consumeOrganizationSupplies(organizationId, inventoryItems, {
+        pinId,
+        actorType: 'organization',
+        actorId: organizationId,
+      })
+
+      if (!inventoryResult.success) {
+        console.warn('Inventory consumption failed:', inventoryResult.error)
+      } else if (inventoryResult.warnings && inventoryResult.warnings.length > 0) {
+        console.warn('Inventory consumption warnings:', inventoryResult.warnings)
+      }
+    }
 
     // Check if all items are now fulfilled (remaining_qty === 0 for all)
     const { data: pinItems, error: checkError } = await supabase

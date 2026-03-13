@@ -155,7 +155,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Description is required" }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
     if (apiKey) {
@@ -239,7 +239,7 @@ export async function POST(req: Request) {
                 items,
                 confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.6)),
               };
-              return NextResponse.json({ suggestion });
+              return NextResponse.json({ suggestion, source: "gemini" });
             } catch {
               // fallthrough to heuristic
             }
@@ -251,7 +251,7 @@ export async function POST(req: Request) {
     }
 
     const suggestion = heuristicAnalyze(description, allowedItems);
-    return NextResponse.json({ suggestion });
+    return NextResponse.json({ suggestion, source: "heuristic" });
   } catch (e) {
     return NextResponse.json({ error: "Failed to analyze" }, { status: 500 });
   }

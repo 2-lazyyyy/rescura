@@ -63,6 +63,10 @@ export default function FamilyTab(props: Props) {
   const [lastSeenMap, setLastSeenMap] = useState<Record<string, any>>({})
   const [mapModalOpen, setMapModalOpen] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<{ name: string; lat: number; lng: number; address?: string } | null>(null)
+  const [isSendingRequest, setIsSendingRequest] = useState(false)
+  const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null)
+  const [sendingSafetyCheckId, setSendingSafetyCheckId] = useState<string | null>(null)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
 
   // Fetch sent requests and merge with family members
   useEffect(() => {
@@ -161,6 +165,7 @@ export default function FamilyTab(props: Props) {
 
   const handleSendSafetyCheck = async (memberId: string) => {
     if (!user?.id) return
+    setSendingSafetyCheckId(memberId)
     try {
       // Send safety check notification
       const res = await sendSafetyCheck(user.id, memberId)
@@ -174,11 +179,14 @@ export default function FamilyTab(props: Props) {
     } catch (err) {
       console.error(err)
       alert(t('family.checkFailed'))
+    } finally {
+      setSendingSafetyCheckId(null)
     }
   }
 
   const handleCancelRequest = async (requestId: string, memberId: string) => {
     if (!user?.id) return
+    setCancelingRequestId(requestId)
     try {
       const res = await cancelFamilyRequest(requestId)
       if (res?.success) {
@@ -193,6 +201,8 @@ export default function FamilyTab(props: Props) {
     } catch (err) {
       console.error(err)
       alert(t('family.cancelFailed'))
+    } finally {
+      setCancelingRequestId(null)
     }
   }
 
@@ -316,7 +326,11 @@ export default function FamilyTab(props: Props) {
                           />
                           <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
                             <Button size="sm" variant="ghost" disabled aria-hidden>
-                              <Search className="w-4 h-4" />
+                              {searching ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Search className="w-4 h-4" />
+                              )}
                             </Button>
                           </div>
                         </div>
@@ -360,11 +374,17 @@ export default function FamilyTab(props: Props) {
                               </div>
                             </div>
                             <div className="flex flex-col sm:flex-row items-center gap-2">
-                              <Button size="sm" className="w-full sm:w-auto" onClick={async () => {
+                              <Button
+                                size="sm"
+                                className="w-full sm:w-auto"
+                                isLoading={isSendingRequest}
+                                disabled={isSendingRequest}
+                                onClick={async () => {
                                 if (!user?.id || !selectedFound?.id || !memberRelation.trim()) {
                                   alert(t('family.specifyRelation'))
                                   return
                                 }
+                                setIsSendingRequest(true)
                                 try {
                                   const res = await sendFamilyRequest(user.id, selectedFound.id, memberRelation)
                                   if (res?.success) {
@@ -392,8 +412,12 @@ export default function FamilyTab(props: Props) {
                                 } catch (err) {
                                   console.error('send request failed', err)
                                   alert(t('family.errorOccurred'))
+                                } finally {
+                                  setIsSendingRequest(false)
                                 }
-                              }}>{t('family.sendRequest')}</Button>
+                              }}>
+                                {t('family.sendRequest')}
+                              </Button>
                               <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => setSelectedFound(null)}>{t('common.cancel')}</Button>
                             </div>
                           </div>
@@ -494,6 +518,9 @@ export default function FamilyTab(props: Props) {
                           if (!member.requestId) return
                           await handleCancelRequest(member.requestId, member.id)
                         }}
+                        isLoading={!!member.requestId && cancelingRequestId === member.requestId}
+                        loadingText=""
+                        disabled={!!member.requestId && cancelingRequestId === member.requestId}
                       >
                         <XCircle className="w-3 h-3 mr-1" />
                         Unlink
@@ -501,13 +528,14 @@ export default function FamilyTab(props: Props) {
                     ) : member.isLinked ? (
                       // Show "Are you ok?" button for linked members
                       <>
-                        {renderSafetyControl(member, t, handleSendSafetyCheck)}
+                        {renderSafetyControl(member, t, handleSendSafetyCheck, sendingSafetyCheckId === member.id)}
                         <Button 
                           size="sm" 
                           variant="destructive" 
                           className="w-full sm:w-auto" 
                           onClick={async () => {
                             if (!user?.id) return
+                            setRemovingMemberId(member.id)
                             try {
                               const res = await removeFamilyMemberById(user.id, member.id)
                               if (res?.success) {
@@ -540,8 +568,13 @@ export default function FamilyTab(props: Props) {
                             } catch (err) {
                               console.error(err)
                               alert(t('family.unlinkFailed'))
+                            } finally {
+                              setRemovingMemberId(null)
                             }
                           }}
+                          isLoading={removingMemberId === member.id}
+                          loadingText=""
+                          disabled={removingMemberId === member.id}
                         >
                           Unlink
                         </Button>
@@ -668,7 +701,12 @@ function Countdown({ expiresAt }: { expiresAt?: string | null }) {
   )
 }
 
-function renderSafetyControl(member: any, t: any, sendFn: (id: string)=>Promise<any>) {
+function renderSafetyControl(
+  member: any,
+  t: any,
+  sendFn: (id: string) => Promise<any>,
+  isSending: boolean
+) {
   const active = serverWindowActive(member)
   if (active && member.status) {
     return (
@@ -685,7 +723,8 @@ function renderSafetyControl(member: any, t: any, sendFn: (id: string)=>Promise<
         variant="outline"
         className="w-full sm:w-auto shadow-sm hover:shadow border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900"
         onClick={() => sendFn(member.id)}
-        disabled={active}
+        isLoading={isSending}
+        disabled={active || isSending}
       >
         <MessageCircle className="w-3 h-3 mr-1" />
         {t('family.areYouOk')}

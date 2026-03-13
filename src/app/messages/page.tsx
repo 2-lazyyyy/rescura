@@ -18,6 +18,7 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<any[]>([])
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isSending, setIsSending] = useState(false)
   const subRef = useRef<any>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
 
@@ -85,6 +86,7 @@ export default function MessagesPage() {
 
   const handleSend = async () => {
     if (!text.trim() || !user?.id || !selected) return
+    setIsSending(true)
     try {
       const res = await sendMessage(user.id, selected.id, text.trim())
       // optimistic append
@@ -92,6 +94,8 @@ export default function MessagesPage() {
       setText('')
     } catch (err) {
       console.error('send failed', err)
+    } finally {
+      setIsSending(false)
     }
   }
 
@@ -148,7 +152,14 @@ export default function MessagesPage() {
             <div className="p-4 border-t bg-white">
               <div className="flex gap-2">
                 <Input placeholder={t('messages.typeSomething') || 'Type a message...'} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSend() }} />
-                <Button onClick={handleSend}><Send className="w-4 h-4" /></Button>
+                <Button
+                  onClick={handleSend}
+                  isLoading={isSending}
+                  loadingText=""
+                  disabled={isSending || !text.trim()}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
               </div>
             </div>
           </Card>

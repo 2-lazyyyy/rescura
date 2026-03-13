@@ -149,6 +149,13 @@ export default function AdminPage() {
     is_admin: false,
   });
   const [loading, setLoading] = useState(true);
+  const [isRegisteringOrg, setIsRegisteringOrg] = useState(false);
+  const [isUpdatingOrg, setIsUpdatingOrg] = useState(false);
+  const [isDeletingOrg, setIsDeletingOrg] = useState(false);
+  const [approvingOrgId, setApprovingOrgId] = useState<string | null>(null);
+  const [rejectingOrgId, setRejectingOrgId] = useState<string | null>(null);
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteOrgDialogOpen, setDeleteOrgDialogOpen] = useState(false);
   const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
@@ -309,6 +316,8 @@ export default function AdminPage() {
       return;
     }
 
+    setIsRegisteringOrg(true);
+
     try {
       const { data, error } = await supabase
         .from('organizations')
@@ -367,11 +376,15 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error creating organization:', error);
       alert(t('admin.createError'));
+    } finally {
+      setIsRegisteringOrg(false);
     }
   };
 
   const handleUpdateOrganization = async () => {
     if (!editingOrg) return;
+
+    setIsUpdatingOrg(true);
 
     try {
       const { error } = await supabase
@@ -424,11 +437,15 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error updating organization:', error);
       alert(t('admin.updateError'));
+    } finally {
+      setIsUpdatingOrg(false);
     }
   };
 
   const handleDeleteOrganization = async () => {
     if (!deleteOrgId) return;
+
+    setIsDeletingOrg(true);
 
     try {
       const { error } = await supabase
@@ -449,10 +466,14 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error deleting organization:', error);
       alert('Error deleting organization');
+    } finally {
+      setIsDeletingOrg(false);
     }
   };
 
   const handleApproveOrganization = async (orgId: string) => {
+    setApprovingOrgId(orgId);
+
     try {
       const { error } = await supabase
         .from('organizations')
@@ -474,10 +495,14 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error approving organization:', error);
       alert('Error approving organization');
+    } finally {
+      setApprovingOrgId(null);
     }
   };
 
   const handleRejectOrganization = async (orgId: string) => {
+    setRejectingOrgId(orgId);
+
     try {
       const { error } = await supabase
         .from('organizations')
@@ -499,6 +524,8 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error rejecting organization:', error);
       alert('Error rejecting organization');
+    } finally {
+      setRejectingOrgId(null);
     }
   };
 
@@ -517,6 +544,8 @@ export default function AdminPage() {
 
   const handleUpdateUser = async () => {
     if (!editingUser) return;
+
+    setIsUpdatingUser(true);
 
     try {
       const updateData: any = {
@@ -563,11 +592,15 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error updating user:', error);
       alert('Error updating user');
+    } finally {
+      setIsUpdatingUser(false);
     }
   };
 
   const handleDeleteUser = async () => {
     if (!deleteUserId) return;
+
+    setIsDeletingUser(true);
 
     try {
       const { error } = await supabase
@@ -588,6 +621,8 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error deleting user:', error);
       alert('Error deleting user');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -845,7 +880,7 @@ export default function AdminPage() {
                       View and manage all registered organizations
                     </CardDescription>
                   </div>
-                  <Button onClick={loadData} variant="outline" size="sm">
+                  <Button onClick={loadData} variant="outline" size="sm" isLoading={loading}>
                     Refresh
                   </Button>
                 </div>
@@ -944,6 +979,9 @@ export default function AdminPage() {
                                     onClick={() =>
                                       handleApproveOrganization(org.id)
                                     }
+                                    isLoading={approvingOrgId === org.id}
+                                    loadingText=""
+                                    disabled={approvingOrgId === org.id}
                                   >
                                     <Check className="w-3 h-3" />
                                   </Button>
@@ -953,6 +991,9 @@ export default function AdminPage() {
                                     onClick={() =>
                                       handleRejectOrganization(org.id)
                                     }
+                                    isLoading={rejectingOrgId === org.id}
+                                    loadingText=""
+                                    disabled={rejectingOrgId === org.id}
                                   >
                                     <X className="w-3 h-3" />
                                   </Button>
@@ -1129,6 +1170,7 @@ export default function AdminPage() {
                                   <DialogFooter>
                                     <Button
                                       variant="outline"
+                                      disabled={isUpdatingOrg}
                                       onClick={() => {
                                         setEditingOrg(null);
                                         setEditDialogOpen(false);
@@ -1136,7 +1178,7 @@ export default function AdminPage() {
                                     >
                                       Cancel
                                     </Button>
-                                    <Button onClick={handleUpdateOrganization}>
+                                    <Button onClick={handleUpdateOrganization} isLoading={isUpdatingOrg}>
                                       Update Organization
                                     </Button>
                                   </DialogFooter>
@@ -1166,6 +1208,7 @@ export default function AdminPage() {
                                   <DialogFooter>
                                     <Button
                                       variant="outline"
+                                      disabled={isDeletingOrg}
                                       onClick={() => {
                                         setDeleteOrgId(null);
                                         setDeleteOrgDialogOpen(false);
@@ -1176,6 +1219,7 @@ export default function AdminPage() {
                                     <Button
                                       variant="destructive"
                                       onClick={handleDeleteOrganization}
+                                      isLoading={isDeletingOrg}
                                     >
                                       Delete
                                     </Button>
@@ -1230,7 +1274,7 @@ export default function AdminPage() {
                         <SelectItem value="organization">Organizations</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button onClick={loadData} variant="outline" size="sm">
+                    <Button onClick={loadData} variant="outline" size="sm" isLoading={loading}>
                       Refresh
                     </Button>
                   </div>
@@ -1397,6 +1441,7 @@ export default function AdminPage() {
                                     <DialogFooter>
                                       <Button
                                         variant="outline"
+                                        disabled={isUpdatingUser}
                                         onClick={() => {
                                           setEditingUser(null);
                                           setEditUserDialogOpen(false);
@@ -1404,7 +1449,7 @@ export default function AdminPage() {
                                       >
                                         Cancel
                                       </Button>
-                                      <Button onClick={handleUpdateUser}>
+                                      <Button onClick={handleUpdateUser} isLoading={isUpdatingUser}>
                                         Update User
                                       </Button>
                                     </DialogFooter>
@@ -1434,6 +1479,7 @@ export default function AdminPage() {
                                     <DialogFooter>
                                       <Button
                                         variant="outline"
+                                        disabled={isDeletingUser}
                                         onClick={() => {
                                           setDeleteUserId(null);
                                           setDeleteUserDialogOpen(false);
@@ -1444,6 +1490,7 @@ export default function AdminPage() {
                                       <Button
                                         variant="destructive"
                                         onClick={handleDeleteUser}
+                                        isLoading={isDeletingUser}
                                       >
                                         Delete
                                       </Button>
@@ -1781,7 +1828,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="flex gap-2 mt-6">
-                  <Button onClick={handleRegisterOrganization}>
+                  <Button onClick={handleRegisterOrganization} isLoading={isRegisteringOrg}>
                     <Plus className="w-4 h-4 mr-2" />
                     {t("admin.registerOrg")}
                   </Button>

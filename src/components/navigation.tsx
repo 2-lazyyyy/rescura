@@ -68,6 +68,7 @@ export function Navigation() {
   const [acceptedRequests, setAcceptedRequests] = useState<Map<string, any>>(new Map())
 
   const userLabel = user?.role ?? (user?.isAdmin ? 'admin' : user?.accountType)
+  const notificationRecipientType = user?.isOrg ? 'organization' as const : 'user' as const
 
   // Dynamic navigation based on authentication status
   const getNavigationItems = () => {
@@ -333,7 +334,7 @@ export function Navigation() {
         
         // Load existing notifications
         try {
-          const existing = await getNotifications(user.id)
+          const existing = await getNotifications(user.id, { recipientType: notificationRecipientType })
           // Filter out family_request notifications that don't have a corresponding pending request
           // Use loadedRequests instead of pendingRequests state to ensure we have the latest data
           const pendingRequestIds = new Set((loadedRequests || []).map((req: any) => req.id))
@@ -363,7 +364,7 @@ export function Navigation() {
           // Polling fallback to ensure UI stays in sync if realtime misses
           const pollInterval = setInterval(async () => {
             try {
-              const refreshed = await getNotifications(user.id)
+              const refreshed = await getNotifications(user.id, { recipientType: notificationRecipientType })
               // Get current pending requests to filter notifications
               const currentRequests = await getPendingFamilyRequests(user.id)
               const currentPendingRequestIds = new Set((currentRequests || []).map((req: any) => req.id))
@@ -498,6 +499,7 @@ export function Navigation() {
               })
             },
             {
+              recipientType: notificationRecipientType,
               onDelete: (notificationId) => {
                 console.log(`[Real-time DELETE] Notification ${notificationId} deleted from database`)
                 // Notification deleted - remove from list and mark as deleted
@@ -844,7 +846,7 @@ export function Navigation() {
       // Also fetch from database to catch any that might not be in state
       if (user?.id) {
         try {
-          const allNotificationsFromDb = await getNotifications(user.id)
+          const allNotificationsFromDb = await getNotifications(user.id, { recipientType: notificationRecipientType })
           const notificationsToDeleteFromDb = allNotificationsFromDb
             .filter((n: any) => n.type === 'family_request' && n.payload?.request_id === requestId)
             .map((n: any) => n.id)
@@ -925,7 +927,7 @@ export function Navigation() {
           }
 
           // Strategy 2: Also fetch and delete directly by ID (backup)
-          const allNotifications = await getNotifications(user.id)
+          const allNotifications = await getNotifications(user.id, { recipientType: notificationRecipientType })
           const matchingNotifications = allNotifications.filter((n: any) => 
             n.type === 'family_request' && n.payload?.request_id === requestId
           )
@@ -947,7 +949,7 @@ export function Navigation() {
 
           // Wait and verify deletion
           await new Promise(resolve => setTimeout(resolve, 300))
-          const verifyNotifications = await getNotifications(user.id)
+          const verifyNotifications = await getNotifications(user.id, { recipientType: notificationRecipientType })
           const stillExists = verifyNotifications.filter((n: any) => 
             n.type === 'family_request' && n.payload?.request_id === requestId
           )
@@ -981,7 +983,7 @@ export function Navigation() {
       }
 
       // Final aggressive check: If any notifications still exist, force delete them
-      const finalCheck = await getNotifications(user.id)
+      const finalCheck = await getNotifications(user.id, { recipientType: notificationRecipientType })
       const finalMatching = finalCheck.filter((n: any) => 
         n.type === 'family_request' && n.payload?.request_id === requestId
       )
@@ -1147,7 +1149,7 @@ export function Navigation() {
           }
 
           // Strategy 2: Also fetch and delete directly by ID (backup)
-          const allNotifications = await getNotifications(user.id)
+          const allNotifications = await getNotifications(user.id, { recipientType: notificationRecipientType })
           const matchingNotifications = allNotifications.filter((n: any) => 
             n.type === 'family_request' && n.payload?.request_id === requestId
           )
@@ -1169,7 +1171,7 @@ export function Navigation() {
 
           // Wait and verify deletion
           await new Promise(resolve => setTimeout(resolve, 300))
-          const verifyNotifications = await getNotifications(user.id)
+          const verifyNotifications = await getNotifications(user.id, { recipientType: notificationRecipientType })
           const stillExists = verifyNotifications.filter((n: any) => 
             n.type === 'family_request' && n.payload?.request_id === requestId
           )
@@ -1203,7 +1205,7 @@ export function Navigation() {
       }
 
       // Final aggressive check: If any notifications still exist, force delete them
-      const finalCheck = await getNotifications(user.id)
+      const finalCheck = await getNotifications(user.id, { recipientType: notificationRecipientType })
       const finalMatching = finalCheck.filter((n: any) => 
         n.type === 'family_request' && n.payload?.request_id === requestId
       )
@@ -1347,7 +1349,7 @@ export function Navigation() {
                               e.preventDefault(); e.stopPropagation();
                               if (!user?.id) return
                               try {
-                                await deleteAllNotifications(user.id)
+                                await deleteAllNotifications(user.id, { recipientType: notificationRecipientType })
                                 setNotifications([])
                                 setPendingRequests([])
                               } catch (err) {
@@ -1581,7 +1583,7 @@ export function Navigation() {
                       onClick={async () => {
                         if (!user?.id) return
                         try {
-                          await markAllNotificationsRead(user.id)
+                          await markAllNotificationsRead(user.id, { recipientType: notificationRecipientType })
                           setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
                         } catch (err) {
                           console.error('mark all notifications read failed', err)
@@ -1597,7 +1599,7 @@ export function Navigation() {
                       onClick={async () => {
                         if (!user?.id) return
                         try {
-                          await deleteAllNotifications(user.id)
+                          await deleteAllNotifications(user.id, { recipientType: notificationRecipientType })
                           setNotifications([])
                           setPendingRequests([])
                         } catch (err) {
@@ -1729,7 +1731,7 @@ export function Navigation() {
                               e.preventDefault(); e.stopPropagation();
                               if (!user?.id) return
                               try {
-                                await deleteAllNotifications(user.id)
+                                await deleteAllNotifications(user.id, { recipientType: notificationRecipientType })
                                 setNotifications([])
                                 setPendingRequests([])
                               } catch (err) {
@@ -1963,7 +1965,7 @@ export function Navigation() {
                       onClick={async () => {
                         if (!user?.id) return
                         try {
-                          await markAllNotificationsRead(user.id)
+                          await markAllNotificationsRead(user.id, { recipientType: notificationRecipientType })
                           setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
                         } catch (err) {
                           console.error('mark all notifications read failed', err)
@@ -1979,7 +1981,7 @@ export function Navigation() {
                       onClick={async () => {
                         if (!user?.id) return
                         try {
-                          await deleteAllNotifications(user.id)
+                          await deleteAllNotifications(user.id, { recipientType: notificationRecipientType })
                           setNotifications([])
                           setPendingRequests([])
                         } catch (err) {

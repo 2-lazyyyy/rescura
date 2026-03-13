@@ -147,6 +147,7 @@ export default function DashboardPage() {
   const [memberRelation, setMemberRelation] = useState('');
   const pathname = usePathname()
   const [completedModuleIds, setCompletedModuleIds] = useState<string[]>([])
+  const [totalPointsCollected, setTotalPointsCollected] = useState(0)
 
 
   const [newMember, setNewMember] = useState({
@@ -402,14 +403,9 @@ export default function DashboardPage() {
     return completedModuleIds.length
   }, [completedModuleIds]);
   
-  const totalPointsCollected = useMemo(() => {
-    // Read points from localStorage instead of calculating from modules
-    if (typeof window !== 'undefined') {
-      const points = parseInt(localStorage.getItem('safetyPoints') || '0')
-      console.log('Total points from localStorage:', points)
-      return points
-    }
-    return 0
+  useEffect(() => {
+    const points = parseInt(localStorage.getItem('safetyPoints') || '0')
+    setTotalPointsCollected(points)
   }, [completedModuleIds]); // Re-calculate when modules change
 
   // if (!isAuthenticated) {

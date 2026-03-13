@@ -11,6 +11,7 @@ import { toastInfo, toastWarning } from "@/lib/toast"
  */
 export function NotificationToasts() {
   const { user, isAuthenticated } = useAuth()
+  const recipientType = user?.isOrg ? 'organization' as const : 'user' as const
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return
@@ -19,12 +20,12 @@ export function NotificationToasts() {
       user.id,
       (n: NotificationRecord) => {
         try {
-          if (n.type === "pin_reported") {
+          if (n.type === "pin_reported" || n.type === "pin_confirmed" || n.type === "pin_confirmed_owner") {
             const payload = typeof n.payload === "string" ? JSON.parse(n.payload) : (n.payload || {})
             const isDamaged = payload?.type === "damaged"
 
-            const title = n.title || (isDamaged ? "Damaged Location Reported" : "Safe Zone Reported")
-            const descBase = n.body || payload?.description || "A new pin has been reported."
+            const title = n.title || (isDamaged ? "Pin Notification" : "Pin Notification")
+            const descBase = n.body || payload?.description || "There is a new pin update."
             const desc = typeof descBase === "string" ? descBase : JSON.stringify(descBase)
 
             if (isDamaged) {
@@ -37,13 +38,14 @@ export function NotificationToasts() {
           // Avoid breaking subscription on any parse errors
           console.warn("[NotificationToasts] handler error", err)
         }
-      }
+      },
+      { recipientType }
     )
 
     return () => {
       try { (channel as any)?.unsubscribe?.() } catch {}
     }
-  }, [isAuthenticated, user?.id])
+  }, [isAuthenticated, recipientType, user?.id])
 
   return null
 }

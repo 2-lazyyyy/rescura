@@ -29,7 +29,7 @@ export async function registerUser(input: RegisterInput): Promise<LoginResult> {
       password: input.password,
     })
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (error) {
     return { success: false, error: error.message }
@@ -57,7 +57,7 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     .select('*')
     .eq('email', email)
     .eq('password', password)
-    .single()
+    .maybeSingle()
 
   if (error) {
     // If no match, Supabase returns an error; normalize to invalid credentials
@@ -86,7 +86,7 @@ export async function loginOrganization(email: string, password: string): Promis
     .select('*')
     .eq('email', email)
     .eq('password', password)
-    .single()
+    .maybeSingle()
 
   if (error) {
     return { success: false, error: 'Invalid credentials' }
@@ -126,7 +126,7 @@ export async function registerOrganization(input: RegisterOrganizationInput): Pr
       address: input.address ?? null,
     })
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (error) {
     return { success: false, error: error.message }

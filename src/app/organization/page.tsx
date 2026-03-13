@@ -43,7 +43,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useLanguage } from '@/hooks/use-language'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
-import { fetchConfirmedPinsForDashboard, acceptHelpRequestItems, checkAndHandleCompletedPin, fetchAggregatedSuppliesByRegion } from '@/services/pins'
+import { fetchConfirmedPinsForDashboard, acceptHelpRequestItems, fetchAggregatedSuppliesByRegion } from '@/services/pins'
+import {
+  fetchOrganizationSupplies,
+  createOrganizationSupply,
+  updateOrganizationSupply,
+  deleteOrganizationSupply,
+} from '@/services/inventory'
+import type { OrganizationSupply, SupplyCategory } from '@/services/inventory'
 import { fetchVolunteersForOrganization, createVolunteer, updateVolunteer, deleteVolunteer } from '@/services/volunteers'
 import {
   validateEmail,
@@ -122,17 +129,8 @@ interface PartnerOrg {
   phone: string
 }
 
-interface Supply {
-  id: string
-  category: 'medical' | 'food' | 'water' | 'shelter' | 'equipment' | 'other'
-  name: string
-  quantity: number
-  unit: string
-  location?: string
-  expiryDate?: Date
-  lastUpdated: Date
-  notes?: string
-}
+type Supply = OrganizationSupply
+type SupplyCategorySelection = SupplyCategory | 'custom'
 
 interface AggregatedSupply {
   region: string
@@ -201,58 +199,6 @@ const mockPartnerOrgs: PartnerOrg[] = [
   }
 ]
 
-// Mock supplies data
-const mockSupplies: Supply[] = [
-  {
-    id: '1',
-    category: 'medical',
-    name: 'First Aid Kits',
-    quantity: 50,
-    unit: 'kits',
-    location: 'Warehouse A',
-    lastUpdated: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    notes: 'Standard first aid supplies'
-  },
-  {
-    id: '2',
-    category: 'food',
-    name: 'Emergency Food Packs',
-    quantity: 200,
-    unit: 'packs',
-    location: 'Storage Room 1',
-    expiryDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
-    lastUpdated: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
-  },
-  {
-    id: '3',
-    category: 'water',
-    name: 'Bottled Water',
-    quantity: 500,
-    unit: 'bottles',
-    location: 'Warehouse B',
-    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    lastUpdated: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
-  },
-  {
-    id: '4',
-    category: 'shelter',
-    name: 'Emergency Tents',
-    quantity: 25,
-    unit: 'tents',
-    location: 'Storage Room 2',
-    lastUpdated: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  },
-  {
-    id: '5',
-    category: 'equipment',
-    name: 'Flashlights',
-    quantity: 100,
-    unit: 'units',
-    location: 'Warehouse A',
-    lastUpdated: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-  }
-]
-
 export default function OrganizationPage() {
   const { t } = useLanguage()
   const { user } = useAuth()
@@ -262,7 +208,7 @@ export default function OrganizationPage() {
   const [helpRequests, setHelpRequests] = useState<HelpRequest[]>(mockHelpRequests)
   const [regionFilter, setRegionFilter] = useState<string>('all')
   const [partnerOrgs, setPartnerOrgs] = useState<PartnerOrg[]>(mockPartnerOrgs)
-  const [supplies, setSupplies] = useState<Supply[]>(mockSupplies)
+  const [supplies, setSupplies] = useState<Supply[]>([])
   const [aggregatedSupplies, setAggregatedSupplies] = useState<AggregatedSupply[]>([])
   const [selectedRequest, setSelectedRequest] = useState<HelpRequest | null>(null)
   const [showAcceptDialog, setShowAcceptDialog] = useState(false)
@@ -275,13 +221,17 @@ export default function OrganizationPage() {
     name: '',
     phone: '',
     email: '',
+    password: '',
     role: 'tracking_volunteer' as 'tracking_volunteer' | 'supply_volunteer'
   })
   const [volunteerErrors, setVolunteerErrors] = useState<Record<string, string>>({})
+  const [isSavingVolunteer, setIsSavingVolunteer] = useState(false)
+  const [deletingVolunteerId, setDeletingVolunteerId] = useState<string | null>(null)
   const [showAddSupply, setShowAddSupply] = useState(false)
   const [editingSupply, setEditingSupply] = useState<Supply | null>(null)
   const [supplyForm, setSupplyForm] = useState({
-    category: 'medical' as Supply['category'],
+    category: 'medical' as SupplyCategorySelection,
+    customCategory: '',
     name: '',
     quantity: 0,
     unit: '',
@@ -290,6 +240,9 @@ export default function OrganizationPage() {
     notes: ''
   })
   const [supplyErrors, setSupplyErrors] = useState<Record<string, string>>({})
+  const [isSavingSupply, setIsSavingSupply] = useState(false)
+  const [deletingSupplyId, setDeletingSupplyId] = useState<string | null>(null)
+  const [isAcceptingRequest, setIsAcceptingRequest] = useState(false)
   const [isLoadingVolunteers, setIsLoadingVolunteers] = useState(false)
 
   // Redirect non-organization users
@@ -353,6 +306,25 @@ export default function OrganizationPage() {
     loadVolunteers()
   }, [user?.id])
 
+  useEffect(() => {
+    const loadSupplies = async () => {
+      if (!user?.id) return
+
+      const result = await fetchOrganizationSupplies(user.id)
+      if (result.success && result.supplies) {
+        setSupplies(result.supplies)
+      } else {
+        toast({
+          title: '❌ Error',
+          description: result.error || 'Failed to load supplies',
+          variant: 'destructive',
+        })
+      }
+    }
+
+    loadSupplies()
+  }, [user?.id, toast])
+
   const handleApproveVolunteer = (volunteerId: string) => {
     setVolunteers(volunteers.map(v => 
       v.id === volunteerId ? { ...v, status: 'active' } : v
@@ -413,81 +385,92 @@ export default function OrganizationPage() {
       return
     }
 
-    if (editingVolunteer) {
-      // Update existing volunteer
-      if (!editingVolunteer.user_id) {
-        toast({
-          title: "❌ Error",
-          description: 'User ID not found',
-          variant: "destructive",
-        })
-        return
-      }
+    setIsSavingVolunteer(true)
 
-      const result = await updateVolunteer(editingVolunteer.user_id, {
-        name: newVolunteer.name,
-        email: newVolunteer.email,
-        phone: newVolunteer.phone,
-        role: newVolunteer.role === 'tracking_volunteer' ? 'tracking' : 'normal'
-      })
-
-      if (result.success) {
-        toast({
-          title: "✅ Success",
-          description: 'Volunteer updated successfully',
-        })
-        setVolunteers(volunteers.map(v => 
-          v.id === editingVolunteer.id 
-            ? { ...v, name: newVolunteer.name, email: newVolunteer.email, phone: newVolunteer.phone, role: newVolunteer.role }
-            : v
-        ))
-        setEditingVolunteer(null)
-      } else {
-        toast({
-          title: "❌ Error",
-          description: result.error || 'Failed to update volunteer',
-          variant: "destructive",
-        })
-      }
-    } else {
-      // Create new volunteer
-      const result = await createVolunteer({
-        name: newVolunteer.name,
-        email: newVolunteer.email,
-        phone: newVolunteer.phone,
-        role: newVolunteer.role === 'tracking_volunteer' ? 'tracking' : 'normal',
-        organizationId: user.id
-      })
-
-      if (result.success && result.volunteer) {
-        toast({
-          title: "✅ Success",
-          description: 'Volunteer registered successfully',
-        })
-        const newVol: Volunteer = {
-          ...result.volunteer,
-          status: 'active' as const,
-          role: newVolunteer.role,
-          joinedAt: new Date(),
-          assignmentsCompleted: 0,
-          location: 'Organization',
-          password: undefined,
-          assignment: undefined
+    try {
+      if (editingVolunteer) {
+        // Update existing volunteer
+        if (!editingVolunteer.user_id) {
+          toast({
+            title: "❌ Error",
+            description: 'User ID not found',
+            variant: "destructive",
+          })
+          return
         }
-        setVolunteers([...volunteers, newVol])
-      } else {
-        toast({
-          title: "❌ Error",
-          description: result.error || 'Failed to register volunteer',
-          variant: "destructive",
+
+        const result = await updateVolunteer(editingVolunteer.user_id, {
+          name: newVolunteer.name,
+          email: newVolunteer.email,
+          phone: newVolunteer.phone,
+          password: newVolunteer.password || undefined,
+          role: newVolunteer.role === 'tracking_volunteer' ? 'tracking' : 'normal'
         })
+
+        if (result.success) {
+          toast({
+            title: "✅ Success",
+              description: 'Volunteer updated successfully',
+              variant: "success",
+          })
+          setVolunteers(volunteers.map(v => 
+            v.id === editingVolunteer.id 
+              ? { ...v, name: newVolunteer.name, email: newVolunteer.email, phone: newVolunteer.phone, role: newVolunteer.role }
+              : v
+          ))
+          setEditingVolunteer(null)
+        } else {
+          toast({
+            title: "❌ Error",
+            description: result.error || 'Failed to update volunteer',
+            variant: "destructive",
+          })
+        }
+      } else {
+        // Create new volunteer
+        const result = await createVolunteer({
+          name: newVolunteer.name,
+          email: newVolunteer.email,
+          phone: newVolunteer.phone,
+          password: newVolunteer.password,
+          role: newVolunteer.role === 'tracking_volunteer' ? 'tracking' : 'normal',
+          organizationId: user.id
+        })
+
+        if (result.success && result.volunteer) {
+          toast({
+            title: "✅ Success",
+              description: 'Volunteer registered successfully',
+              variant: "success",
+          })
+          const newVol: Volunteer = {
+            ...result.volunteer,
+            status: 'active' as const,
+            role: newVolunteer.role,
+            joinedAt: new Date(),
+            assignmentsCompleted: 0,
+            location: 'Organization',
+            password: undefined,
+            assignment: undefined
+          }
+          setVolunteers([...volunteers, newVol])
+        } else {
+          toast({
+            title: "❌ Error",
+            description: result.error || 'Failed to register volunteer',
+            variant: "destructive",
+          })
+        }
       }
+    } finally {
+      setIsSavingVolunteer(false)
     }
 
     setNewVolunteer({
       name: '',
       phone: '',
       email: '',
+      password: '',
       role: 'tracking_volunteer'
     })
     setShowRegisterVolunteer(false)
@@ -496,19 +479,24 @@ export default function OrganizationPage() {
   const handleDeleteVolunteer = async (orgMemberId: string) => {
     if (!confirm('Are you sure you want to delete this volunteer?')) return
 
-    const result = await deleteVolunteer(orgMemberId)
-    if (result.success) {
-      toast({
-        title: "✅ Success",
-        description: 'Volunteer deleted successfully',
-      })
-      setVolunteers(volunteers.filter(v => v.org_member_id !== orgMemberId))
-    } else {
-      toast({
-        title: "❌ Error",
-        description: result.error || 'Failed to delete volunteer',
-        variant: "destructive",
-      })
+    setDeletingVolunteerId(orgMemberId)
+    try {
+      const result = await deleteVolunteer(orgMemberId)
+      if (result.success) {
+        toast({
+          title: "✅ Success",
+          description: 'Volunteer deleted successfully',
+        })
+        setVolunteers(volunteers.filter(v => v.org_member_id !== orgMemberId))
+      } else {
+        toast({
+          title: "❌ Error",
+          description: result.error || 'Failed to delete volunteer',
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setDeletingVolunteerId(null)
     }
   }
 
@@ -518,12 +506,13 @@ export default function OrganizationPage() {
       name: volunteer.name,
       phone: volunteer.phone,
       email: volunteer.email,
+      password: '',
       role: volunteer.role
     })
     setShowRegisterVolunteer(true)
   }
 
-  const handleAddSupply = () => {
+  const handleAddSupply = async () => {
     const errors: Record<string, string> = {}
     
     // Validate supply name
@@ -545,9 +534,16 @@ export default function OrganizationPage() {
     }
     
     // Validate category
-    const categoryValidation = validateEnum(supplyForm.category, ['medical', 'food', 'water', 'shelter', 'equipment', 'other'], { fieldName: 'Category' })
-    if (!categoryValidation.valid) {
-      errors.category = categoryValidation.error || 'Invalid category'
+    if (supplyForm.category === 'custom') {
+      const customValidation = validateLength(supplyForm.customCategory, { min: 1, max: 50, fieldName: 'Category' })
+      if (!customValidation.valid) {
+        errors.category = customValidation.error || 'Invalid category'
+      }
+    } else {
+      const categoryValidation = validateEnum(supplyForm.category, standardSupplyCategories, { fieldName: 'Category' })
+      if (!categoryValidation.valid) {
+        errors.category = categoryValidation.error || 'Invalid category'
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -562,21 +558,53 @@ export default function OrganizationPage() {
 
     setSupplyErrors({})
 
-    const newSupply: Supply = {
-      id: Date.now().toString(),
-      category: supplyForm.category,
-      name: supplyForm.name,
-      quantity: supplyForm.quantity,
-      unit: supplyForm.unit,
-      location: supplyForm.location || undefined,
-      expiryDate: supplyForm.expiryDate ? new Date(supplyForm.expiryDate) : undefined,
-      lastUpdated: new Date(),
-      notes: supplyForm.notes || undefined
+    if (!user?.id) {
+      toast({
+        title: '❌ Error',
+        description: 'Organization ID not found',
+        variant: 'destructive',
+      })
+      return
     }
 
-    setSupplies([...supplies, newSupply])
+    const resolvedCategory = supplyForm.category === 'custom'
+      ? supplyForm.customCategory.trim()
+      : supplyForm.category
+
+    setIsSavingSupply(true)
+    let result: { success: boolean; supply?: Supply; error?: string }
+
+    try {
+      result = await createOrganizationSupply(
+        user.id,
+        {
+          category: resolvedCategory,
+          name: supplyForm.name,
+          quantity: supplyForm.quantity,
+          unit: supplyForm.unit,
+          location: supplyForm.location || undefined,
+          expiryDate: supplyForm.expiryDate || undefined,
+          notes: supplyForm.notes || undefined,
+        },
+        { actorType: 'organization', actorId: user.id }
+      )
+    } finally {
+      setIsSavingSupply(false)
+    }
+
+    if (!result.success || !result.supply) {
+      toast({
+        title: '❌ Error',
+        description: result.error || 'Failed to add supply',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSupplies([result.supply, ...supplies])
     setSupplyForm({
       category: 'medical',
+      customCategory: '',
       name: '',
       quantity: 0,
       unit: '',
@@ -585,12 +613,31 @@ export default function OrganizationPage() {
       notes: ''
     })
     setShowAddSupply(false)
+    toast({
+      title: '✅ Success',
+      description: 'Supply added successfully',
+    })
+  }
+
+  const standardSupplyCategories: SupplyCategory[] = ['medical', 'food', 'water', 'shelter', 'equipment', 'other']
+
+  const resolveCategorySelection = (category: string): { selection: SupplyCategorySelection; customCategory: string } => {
+    const trimmed = category.trim()
+    const normalized = trimmed.toLowerCase()
+
+    if (standardSupplyCategories.includes(normalized as SupplyCategory)) {
+      return { selection: normalized as SupplyCategory, customCategory: '' }
+    }
+
+    return { selection: 'custom', customCategory: trimmed }
   }
 
   const handleEditSupply = (supply: Supply) => {
+    const resolvedCategory = resolveCategorySelection(supply.category)
     setEditingSupply(supply)
     setSupplyForm({
-      category: supply.category,
+      category: resolvedCategory.selection,
+      customCategory: resolvedCategory.customCategory,
       name: supply.name,
       quantity: supply.quantity,
       unit: supply.unit,
@@ -601,7 +648,7 @@ export default function OrganizationPage() {
     setShowAddSupply(true)
   }
 
-  const handleUpdateSupply = () => {
+  const handleUpdateSupply = async () => {
     const errors: Record<string, string> = {}
     
     if (!editingSupply) {
@@ -632,9 +679,16 @@ export default function OrganizationPage() {
     }
     
     // Validate category
-    const categoryValidation = validateEnum(supplyForm.category, ['medical', 'food', 'water', 'shelter', 'equipment', 'other'], { fieldName: 'Category' })
-    if (!categoryValidation.valid) {
-      errors.category = categoryValidation.error || 'Invalid category'
+    if (supplyForm.category === 'custom') {
+      const customValidation = validateLength(supplyForm.customCategory, { min: 1, max: 50, fieldName: 'Category' })
+      if (!customValidation.valid) {
+        errors.category = customValidation.error || 'Invalid category'
+      }
+    } else {
+      const categoryValidation = validateEnum(supplyForm.category, standardSupplyCategories, { fieldName: 'Category' })
+      if (!categoryValidation.valid) {
+        errors.category = categoryValidation.error || 'Invalid category'
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -649,25 +703,57 @@ export default function OrganizationPage() {
 
     setSupplyErrors({})
 
-    setSupplies(supplies.map(s =>
-      s.id === editingSupply.id
-        ? {
-            ...s,
-            category: supplyForm.category,
-            name: supplyForm.name,
-            quantity: supplyForm.quantity,
-            unit: supplyForm.unit,
-            location: supplyForm.location || undefined,
-            expiryDate: supplyForm.expiryDate ? new Date(supplyForm.expiryDate) : undefined,
-            lastUpdated: new Date(),
-            notes: supplyForm.notes || undefined
-          }
-        : s
-    ))
+    if (!user?.id) {
+      toast({
+        title: '❌ Error',
+        description: 'Organization ID not found',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const resolvedCategory = supplyForm.category === 'custom'
+      ? supplyForm.customCategory.trim()
+      : supplyForm.category
+
+    setIsSavingSupply(true)
+    let result: { success: boolean; supply?: Supply; error?: string }
+
+    try {
+      result = await updateOrganizationSupply(
+        user.id,
+        editingSupply.id,
+        {
+          category: resolvedCategory,
+          name: supplyForm.name,
+          quantity: supplyForm.quantity,
+          unit: supplyForm.unit,
+          location: supplyForm.location || undefined,
+          expiryDate: supplyForm.expiryDate || undefined,
+          notes: supplyForm.notes || undefined,
+        },
+        { actorType: 'organization', actorId: user.id }
+      )
+    } finally {
+      setIsSavingSupply(false)
+    }
+
+    if (!result.success || !result.supply) {
+      toast({
+        title: '❌ Error',
+        description: result.error || 'Failed to update supply',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const updatedSupply = result.supply
+    setSupplies(supplies.map(s => (s.id === editingSupply.id ? updatedSupply : s)))
 
     setEditingSupply(null)
     setSupplyForm({
       category: 'medical',
+      customCategory: '',
       name: '',
       quantity: 0,
       unit: '',
@@ -682,13 +768,47 @@ export default function OrganizationPage() {
     })
   }
 
-  const handleDeleteSupply = (supplyId: string) => {
-    if (confirm('Are you sure you want to delete this supply?')) {
-      setSupplies(supplies.filter(s => s.id !== supplyId))
+  const handleDeleteSupply = async (supplyId: string) => {
+    if (!confirm('Are you sure you want to delete this supply?')) return
+
+    if (!user?.id) {
+      toast({
+        title: '❌ Error',
+        description: 'Organization ID not found',
+        variant: 'destructive',
+      })
+      return
     }
+
+    setDeletingSupplyId(supplyId)
+    let result: { success: boolean; error?: string }
+
+    try {
+      result = await deleteOrganizationSupply(user.id, supplyId, {
+        actorType: 'organization',
+        actorId: user.id,
+      })
+    } finally {
+      setDeletingSupplyId(null)
+    }
+
+    if (!result.success) {
+      toast({
+        title: '❌ Error',
+        description: result.error || 'Failed to delete supply',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSupplies(supplies.filter(s => s.id !== supplyId))
+    toast({
+      title: '✅ Success',
+      description: 'Supply deleted successfully',
+    })
   }
 
-  const getCategoryColor = (category: Supply['category']) => {
+  const getCategoryColor = (category: SupplyCategory | string) => {
     switch (category) {
       case 'medical':
         return 'bg-red-100 text-red-800'
@@ -753,7 +873,14 @@ export default function OrganizationPage() {
     }
 
     // Call backend to accept items (now handles completion check automatically)
-    const result = await acceptHelpRequestItems(selectedRequest.id, itemsToAccept)
+    setIsAcceptingRequest(true)
+    let result: { success: boolean; completed?: boolean; error?: string }
+
+    try {
+      result = await acceptHelpRequestItems(selectedRequest.id, itemsToAccept, user.id)
+    } finally {
+      setIsAcceptingRequest(false)
+    }
     
     if (result.success) {
       if (result.completed) {
@@ -1031,7 +1158,7 @@ export default function OrganizationPage() {
 
         {/* Secondary Features - Tabs */}
         <Tabs defaultValue="volunteers" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 gap-1 lg:gap-0">
+          <TabsList className="grid w-full grid-cols-2 gap-1">
             <TabsTrigger value="volunteers" className="flex items-center justify-center gap-1 text-xs sm:text-sm">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">{t('org.volunteerManagement')}</span>
@@ -1042,17 +1169,27 @@ export default function OrganizationPage() {
               <span className="hidden md:inline">Supplies</span>
               <span className="inline md:hidden">Supply</span>
             </TabsTrigger>
+            {/**
+             * Needed Supplies tab: hidden until future integration.
+             */}
+            {/*
             <TabsTrigger value="supplies-needed" className="flex items-center justify-center gap-1 text-xs sm:text-sm">
               <Package className="w-4 h-4" />
               <span className="hidden lg:inline">Needed Supplies</span>
               <span className="hidden sm:inline lg:hidden">Needed</span>
               <span className="inline sm:hidden">Needed</span>
             </TabsTrigger>
+            */}
+            {/**
+             * Collaboration tab: hidden until future integration.
+             */}
+            {/*
             <TabsTrigger value="collaboration" className="flex items-center justify-center gap-1 text-xs sm:text-sm">
               <Handshake className="w-4 h-4" />
               <span className="hidden sm:inline">{t('org.collaboration')}</span>
               <span className="inline sm:hidden">Partners</span>
             </TabsTrigger>
+            */}
           </TabsList>
 
           {/* Volunteer Management */}
@@ -1111,6 +1248,16 @@ export default function OrganizationPage() {
                             />
                           </div>
                           <div>
+                            <Label htmlFor="volunteer-password">Password {editingVolunteer ? '(Leave blank to keep unchanged)' : '*'}</Label>
+                            <Input
+                              id="volunteer-password"
+                              type="password"
+                              value={newVolunteer.password || ''}
+                              onChange={(e) => setNewVolunteer(prev => ({ ...prev, password: e.target.value }))}
+                              placeholder="Min 8 characters"
+                            />
+                          </div>
+                          <div>
                             <Label htmlFor="volunteer-role">Role *</Label>
                             <Select 
                               value={newVolunteer.role} 
@@ -1129,7 +1276,11 @@ export default function OrganizationPage() {
                           </div>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
-                          <Button onClick={handleRegisterVolunteer} className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm">
+                          <Button
+                            onClick={handleRegisterVolunteer}
+                            isLoading={isSavingVolunteer}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
+                          >
                             {editingVolunteer ? (
                               <>
                                 <Edit className="w-4 h-4 mr-2" />
@@ -1144,6 +1295,7 @@ export default function OrganizationPage() {
                           </Button>
                           <Button 
                             variant="outline"
+                            disabled={isSavingVolunteer}
                             onClick={() => {
                               setShowRegisterVolunteer(false)
                               setEditingVolunteer(null)
@@ -1151,6 +1303,7 @@ export default function OrganizationPage() {
                                 name: '',
                                 phone: '',
                                 email: '',
+                                password: '',
                                 role: 'tracking_volunteer'
                               })
                             }}
@@ -1217,6 +1370,9 @@ export default function OrganizationPage() {
                                 size="sm" 
                                 variant="outline"
                                 onClick={() => volunteer.org_member_id && handleDeleteVolunteer(volunteer.org_member_id)}
+                                isLoading={!!volunteer.org_member_id && deletingVolunteerId === volunteer.org_member_id}
+                                loadingText=""
+                                disabled={!!volunteer.org_member_id && deletingVolunteerId === volunteer.org_member_id}
                                 className="border-red-300 text-red-600 hover:bg-red-50 rounded-full p-2 transition-all hover:scale-110"
                                 title="Delete volunteer"
                               >
@@ -1253,6 +1409,7 @@ export default function OrganizationPage() {
                       setEditingSupply(null)
                       setSupplyForm({
                         category: 'medical',
+                        customCategory: '',
                         name: '',
                         quantity: 0,
                         unit: '',
@@ -1278,8 +1435,12 @@ export default function OrganizationPage() {
                             <Label htmlFor="supply-category">Category *</Label>
                             <Select 
                               value={supplyForm.category} 
-                              onValueChange={(value: Supply['category']) => 
-                                setSupplyForm(prev => ({ ...prev, category: value }))
+                              onValueChange={(value: SupplyCategorySelection) => 
+                                setSupplyForm(prev => ({
+                                  ...prev,
+                                  category: value,
+                                  customCategory: value === 'custom' ? prev.customCategory : ''
+                                }))
                               }
                             >
                               <SelectTrigger>
@@ -1292,9 +1453,23 @@ export default function OrganizationPage() {
                                 <SelectItem value="shelter">Shelter</SelectItem>
                                 <SelectItem value="equipment">Equipment</SelectItem>
                                 <SelectItem value="other">Other</SelectItem>
+                                <SelectItem value="custom">Custom</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
+                          {supplyForm.category === 'custom' && (
+                            <div>
+                              <Label htmlFor="supply-category-custom">Custom Category *</Label>
+                              <Input
+                                id="supply-category-custom"
+                                value={supplyForm.customCategory}
+                                onChange={(e) =>
+                                  setSupplyForm(prev => ({ ...prev, customCategory: e.target.value }))
+                                }
+                                placeholder="Enter custom category"
+                              />
+                            </div>
+                          )}
                           <div>
                             <Label htmlFor="supply-name">Name *</Label>
                             <Input
@@ -1355,7 +1530,8 @@ export default function OrganizationPage() {
                         </div>
                         <div className="flex gap-2 pt-4 border-t">
                           <Button 
-                            onClick={editingSupply ? handleUpdateSupply : handleAddSupply} 
+                            onClick={editingSupply ? handleUpdateSupply : handleAddSupply}
+                            isLoading={isSavingSupply}
                             className="flex-1"
                           >
                             <Package className="w-4 h-4 mr-2" />
@@ -1363,11 +1539,13 @@ export default function OrganizationPage() {
                           </Button>
                           <Button 
                             variant="outline"
+                            disabled={isSavingSupply}
                             onClick={() => {
                               setShowAddSupply(false)
                               setEditingSupply(null)
                               setSupplyForm({
                                 category: 'medical',
+                                customCategory: '',
                                 name: '',
                                 quantity: 0,
                                 unit: '',
@@ -1469,6 +1647,9 @@ export default function OrganizationPage() {
                                 size="sm" 
                                 variant="outline"
                                 onClick={() => handleDeleteSupply(supply.id)}
+                                isLoading={deletingSupplyId === supply.id}
+                                loadingText=""
+                                disabled={deletingSupplyId === supply.id}
                               >
                                 <Trash2 className="w-3 h-3" />
                               </Button>
@@ -1484,7 +1665,7 @@ export default function OrganizationPage() {
             </Card>
           </TabsContent>
 
-          {/* Total Needed Supplies */}
+          {/* Total Needed Supplies (hidden for future integration)
           <TabsContent value="supplies-needed" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1590,8 +1771,9 @@ export default function OrganizationPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          */}
 
-          {/* Collaboration */}
+          {/* Collaboration (hidden for future integration)
           <TabsContent value="collaboration" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1650,6 +1832,7 @@ export default function OrganizationPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          */}
         </Tabs>
       </div>
 
@@ -1798,7 +1981,8 @@ export default function OrganizationPage() {
                 <Button 
                   onClick={handleAcceptRequest}
                   className="flex-1"
-                  disabled={Object.values(acceptQuantities).every(qty => qty === 0)}
+                  isLoading={isAcceptingRequest}
+                  disabled={isAcceptingRequest || Object.values(acceptQuantities).every(qty => qty === 0)}
                 >
                   <Check className="w-4 h-4 mr-2" />
                   Accept Request

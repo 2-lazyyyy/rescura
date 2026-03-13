@@ -140,6 +140,8 @@ export default function HomePage() {
   const [showConfirmPinDialog, setShowConfirmPinDialog] = useState(false);
   const [showPinListDialog, setShowPinListDialog] = useState(false);
   const [pinToConfirm, setPinToConfirm] = useState<Pin | null>(null);
+  const [isConfirmingPin, setIsConfirmingPin] = useState(false);
+  const [markingCompletedPinId, setMarkingCompletedPinId] = useState<string | null>(null);
     const [trackerSelectedItems, setTrackerSelectedItems] = useState<Map<string, number>>(new Map());
   // AI suggestion states (Add Pin dialog)
   const [aiSuggestAdd, setAiSuggestAdd] = useState<AISuggestion | null>(null);
@@ -1148,6 +1150,7 @@ export default function HomePage() {
 
   const handleMarkCompleted = async (pinId: string) => {
     try {
+      setMarkingCompletedPinId(pinId);
       // Verify user is authenticated and is a tracker
       if (!user?.id) {
         toast({
@@ -1198,6 +1201,8 @@ export default function HomePage() {
         description: "Failed to mark pin as completed",
         variant: "destructive",
       });
+    } finally {
+      setMarkingCompletedPinId(null);
     }
   };
 
@@ -1290,6 +1295,8 @@ export default function HomePage() {
   const handleConfirmPinWithItems = async () => {
     if (!pinToConfirm) return;
 
+    setIsConfirmingPin(true);
+
     try {
       // First, confirm the pin status
       const result = await updatePinStatus(
@@ -1345,6 +1352,8 @@ export default function HomePage() {
         description: "Failed to confirm pin",
         variant: "destructive",
       });
+    } finally {
+      setIsConfirmingPin(false);
     }
   };
 
@@ -1361,6 +1370,7 @@ export default function HomePage() {
                   variant="outline"
                   size={isUserTracker ? "sm" : "default"}
                   onClick={handleGetCurrentLocation}
+                  isLoading={isGettingLocation}
                   disabled={isGettingLocation}
                   className={`flex items-center lg:gap-2 w-full sm:flex-1 ${isUserTracker ? "" : "h-12 sm:h-10"}`}
                 >
@@ -1867,6 +1877,8 @@ export default function HomePage() {
                               handleMarkCompleted(pin.id);
                             }}
                             className="w-full mt-2"
+                            isLoading={markingCompletedPinId === pin.id}
+                            disabled={markingCompletedPinId === pin.id}
                           >
                             <Check className="w-3 h-3 mr-1" />
                             Mark Delivered
@@ -2015,6 +2027,8 @@ export default function HomePage() {
                     <Button
                       onClick={() => handleMarkCompleted(selectedPin.id)}
                       className="w-full"
+                      isLoading={markingCompletedPinId === selectedPin.id}
+                      disabled={markingCompletedPinId === selectedPin.id}
                     >
                       <Check className="w-4 h-4 mr-2" />
                       Mark Delivered
@@ -2353,7 +2367,12 @@ export default function HomePage() {
 
               {/* Confirm Button */}
               <div className="flex gap-2 pt-4 border-t">
-                <Button onClick={handleConfirmPinWithItems} className="flex-1">
+                <Button
+                  onClick={handleConfirmPinWithItems}
+                  className="flex-1"
+                  isLoading={isConfirmingPin}
+                  disabled={isConfirmingPin}
+                >
                   <Check className="w-4 h-4 mr-2" />
                   Confirm Pin
                 </Button>
@@ -2363,6 +2382,7 @@ export default function HomePage() {
                     setShowConfirmPinDialog(false);
                     setPinToConfirm(null);
                   }}
+                  disabled={isConfirmingPin}
                 >
                   Cancel
                 </Button>

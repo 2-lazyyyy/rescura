@@ -17,12 +17,14 @@ export interface CreateVolunteerInput {
   phone: string
   role: 'tracking' | 'normal'
   organizationId: string
+  password?: string
 }
 
 export interface UpdateVolunteerInput {
   name?: string
   email?: string
   phone?: string
+  password?: string
   role?: 'tracking' | 'normal'
 }
 
@@ -101,14 +103,17 @@ export async function createVolunteer(
           name: input.name,
           email: input.email,
           phone: input.phone,
-          password: '12345678' // Default password
+          password: input.password || '12345678' // Use provided password or default
         }
       ])
       .select()
-      .single()
+      .maybeSingle()
 
     if (userError) {
       console.error('Error creating user:', userError)
+      if (userError.code === '23505' || userError.message.includes('duplicate key')) {
+        return { success: false, error: 'A user with this email or phone already exists.' }
+      }
       return { success: false, error: userError.message }
     }
 
@@ -124,7 +129,7 @@ export async function createVolunteer(
         }
       ])
       .select()
-      .single()
+      .maybeSingle()
 
     if (orgMemberError) {
       console.error('Error creating org-member:', orgMemberError)
@@ -167,16 +172,20 @@ export async function updateVolunteer(
     if (input.name) updateData.name = input.name
     if (input.email) updateData.email = input.email
     if (input.phone) updateData.phone = input.phone
+    if (input.password) updateData.password = input.password
 
     const { data: userData, error: userError } = await supabase
       .from('users')
       .update(updateData)
       .eq('id', userId)
       .select()
-      .single()
+      .maybeSingle()
 
     if (userError) {
       console.error('Error updating user:', userError)
+      if (userError.code === '23505' || userError.message.includes('duplicate key')) {
+        return { success: false, error: 'A user with this email or phone already exists.' }
+      }
       return { success: false, error: userError.message }
     }
 
