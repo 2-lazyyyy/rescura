@@ -13,6 +13,7 @@ import { useLanguage } from '@/hooks/use-language'
 import { useAuth } from '@/hooks/use-auth'
 import { askChat } from '@/lib/chat'
 import type { ChatCategory, AssistantKind } from '@/lib/chat'
+import { toastError } from '@/lib/toast'
 import { useSearchParams } from 'next/navigation'
 import { findContactsNear, loadContacts, type EmergencyContact } from '@/lib/contacts'
 import ReactMarkdown from 'react-markdown'
@@ -244,7 +245,7 @@ export default function AIChatAssistant({ initialOpen = false }: { initialOpen?:
       return
     }
 
-    // 3) Otherwise: normal LLM flow (Groq/Ollama + optional files to backend)
+    // 3) Otherwise: normal LLM flow (server-side Gemini + optional files)
     try {
       const data = await askChat(me.content, language as 'en' | 'my', mode, attached)
       // clear files only after successful send to backend
@@ -259,7 +260,13 @@ export default function AIChatAssistant({ initialOpen = false }: { initialOpen?:
       if (typeof data.online === 'boolean') setOnline(data.online)
       if (data.model) setLastModel(data.model)
       setThreads(prev => ({ ...prev, [mode]: [...prev[mode], ai] }))
-    } catch {
+    } catch (err) {
+      const errMsg = err instanceof Error && err.message
+        ? err.message
+        : (language === 'my' ? 'AI အဆင်မပြေပါ။' : 'AI request failed.')
+      toastError(language === 'my' ? 'AI အမှား' : 'AI error', errMsg)
+      setOnline(false)
+      setLastModel(undefined)
       const fallback = language === 'my'
         ? 'တောင်းပန်ပါတယ်၊ အမှားအယွင်းတစ်ခု ဖြစ်ခဲ့သည်။ ပြန်လည်ကြိုးစားပါ။'
         : 'I’m sorry, something went wrong. Please try again.'
@@ -365,7 +372,7 @@ export default function AIChatAssistant({ initialOpen = false }: { initialOpen?:
     <div className="flex items-center gap-2">
       <div
         className={`w-2.5 h-2.5 rounded-full ${online === null ? 'bg-yellow-300' : online ? 'bg-green-400' : 'bg-gray-400'}`}
-        title={online === null ? 'Status: unknown' : online ? `Online (${lastModel ?? 'Groq/Ollama'})` : 'Offline (Ollama/local)'}
+        title={online === null ? 'Status: unknown' : online ? `Online (${lastModel ?? 'Gemini'})` : 'Offline (server unavailable)'}
       />
       <span className="text-[11px] opacity-90">
         {online === null ? 'Checking…' : online ? 'Online' : 'Offline'}

@@ -1273,11 +1273,11 @@ export function Navigation() {
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-2">
               <img 
-                src="/linyone.svg" 
-                alt="Lin Yone Tech" 
+                src="/rescura-logo.svg" 
+                alt="Rescura" 
                 className="h-16 w-auto"
               />
-              <span className="text-xl font-bold text-gray-900">Lin Yone Tech</span>
+              <span className="text-xl font-bold text-gray-900">Rescura</span>
             </Link>
           </div>
 

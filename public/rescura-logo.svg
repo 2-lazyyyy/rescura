@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Shield body -->
+  <path d="M100 12 L168 40 L168 100 C168 140 138 172 100 188 C62 172 32 140 32 100 L32 40 Z"
+    fill="#DC2626" />
+  <!-- Inner shield highlight -->
+  <path d="M100 26 L154 50 L154 100 C154 132 130 158 100 172 C70 158 46 132 46 100 L46 50 Z"
+    fill="#EF4444" opacity="0.4"/>
+  <!-- Medical cross / rescue symbol -->
+  <rect x="86" y="68" width="28" height="64" rx="5" fill="white"/>
+  <rect x="68" y="86" width="64" height="28" rx="5" fill="white"/>
+  <!-- Pulse line overlay on cross -->
+  <path d="M72 100 L82 100 L87 88 L93 112 L98 96 L103 104 L108 100 L128 100"
+    stroke="#DC2626" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

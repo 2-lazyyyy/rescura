@@ -155,7 +155,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Description is required" }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
     if (apiKey) {

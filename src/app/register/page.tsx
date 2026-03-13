@@ -252,12 +252,12 @@ export default function RegisterPage() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <img 
-              src="/linyone.svg" 
-              alt="Lin Yone Tech" 
+              src="/rescura-logo.svg" 
+              alt="Rescura" 
               className="h-16 w-auto"
             />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Lin Yone Tech</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Rescura</h1>
           <p className="text-gray-600">{t('auth.register')}</p>
         </div>
 

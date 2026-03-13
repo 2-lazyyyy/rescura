@@ -25,6 +25,7 @@ import {
 import Link from 'next/link'
 import { useLanguage } from '@/hooks/use-language'
 import { useAuth } from '@/hooks/use-auth'
+import { toastError } from '@/lib/toast'
 
 interface Message {
   id: string
@@ -116,21 +117,33 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: userMessage,
-          language: language
+          language: language,
+          assistant: 'emergency'
         })
       })
 
       if (!response.ok) {
-        throw new Error('Failed to get AI response')
+        const errorText = await response.text()
+        let errorMessage = 'Failed to get AI response'
+        if (errorText) {
+          try {
+            const parsed = JSON.parse(errorText)
+            errorMessage = parsed?.message || parsed?.error || parsed?.detail || errorMessage
+          } catch {
+            errorMessage = errorText
+          }
+        }
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
+      if (!data?.response) {
+        throw new Error('Empty response from AI service')
+      }
       return data.response || 'I apologize, but I encountered an error. Please try again.'
     } catch (error) {
       console.error('AI Response Error:', error)
-      return language === 'my'
-        ? 'တောင်းပြီးတောင်းအခက်အေးပါသည်။ အကယ်၍ ဆက်သွင်းပြန်လည်းမှုခြင်းမို့မဟုတ်ပါသည်။'
-        : 'I apologize, but I encountered an error. Please try again.'
+      throw error
     }
   }
 
@@ -180,6 +193,10 @@ export default function ChatPage() {
       
       setMessages(prev => [...prev, assistantMessage])
     } catch (error) {
+      const errMsg = error instanceof Error && error.message
+        ? error.message
+        : (language === 'my' ? 'AI အဆင်မပြေပါ။' : 'AI request failed.')
+      toastError(language === 'my' ? 'AI အမှား' : 'AI error', errMsg)
       console.error('Error generating response:', error)
       
       const errorMessage: Message = {
