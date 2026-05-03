@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 
-type SuggestionItem = { name: string; qty: number };
 type Suggestion = {
+  isValid: boolean;
+  reason: string;
   severity: number;
   categories: string[];
   items: SuggestionItem[];
   confidence: number;
+};
+
+type SuggestionItem = {
+  name: string;
+  qty: number;
 };
 
 function toCanonicalAllowed(name: string, allowed?: string[]): string | null {
@@ -140,16 +146,17 @@ function heuristicAnalyze(description: string, allowed?: string[]): Suggestion {
   }
   const mergedItems = Object.entries(merged).map(([name, qty]) => ({ name, qty }));
 
-  return { severity, categories, items: mergedItems, confidence };
+  return { isValid: true, reason: "Analyzed based on keywords.", severity, categories, items: mergedItems, confidence };
 }
 
 export async function POST(req: Request) {
   try {
-    const { description, imageBase64, imageMime, allowedItems } = (await req.json()) as {
+    const { description, imageBase64, imageMime, allowedItems, location } = (await req.json()) as {
       description?: string;
       imageBase64?: string;
       imageMime?: string;
       allowedItems?: string[];
+      location?: { lat: number, lng: number };
     };
     if (!description || !description.trim()) {
       return NextResponse.json({ error: "Description is required" }, { status: 400 });
@@ -171,12 +178,15 @@ export async function POST(req: Request) {
           "You are an emergency triage assistant.",
           "Return STRICT JSON only (no prose).",
           "Schema: {",
+          "  \"isValid\": boolean (true if description/photo represent a real emergency or incident),",
+          "  \"reason\": string (brief explanation of your decision/analysis),",
           "  \"severity\": number (0..1),",
           "  \"categories\": string[],",
           "  \"items\": Array<{ name: string, qty: number }>,",
           "  \"confidence\": number (0..1)",
           "}",
           "Rules:",
+          "- If 'isValid' is false, keep severity 0 and items empty, but explain why in 'reason'.",
           "- categories from: [structural, medical, flooding, fire, general, critical] (choose any).",
           "- items must use names from the allowed list only; if none apply, return an empty items array.",
           "- qty must be positive integers; max 10 items.",
@@ -184,6 +194,7 @@ export async function POST(req: Request) {
           allowedSection,
           "Description:",
           description,
+          location ? `Location: Lat ${location.lat}, Lng ${location.lng}` : "",
           "JSON only:",
         ].join("\n");
 
@@ -234,9 +245,11 @@ export async function POST(req: Request) {
                 items = Object.entries(mapped).map(([name, qty]) => ({ name, qty }));
               }
               const suggestion: Suggestion = {
+                isValid: !!parsed.isValid,
+                reason: String(parsed.reason || ""),
                 severity: Math.min(1, Math.max(0, parsed.severity ?? 0.5)),
                 categories: Array.isArray(parsed.categories) ? parsed.categories.slice(0, 5) : ["general"],
-                items,
+                items: parsed.isValid ? items : [],
                 confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.6)),
               };
               return NextResponse.json({ suggestion, source: "gemini" });
@@ -252,7 +265,8 @@ export async function POST(req: Request) {
 
     const suggestion = heuristicAnalyze(description, allowedItems);
     return NextResponse.json({ suggestion, source: "heuristic" });
-  } catch (e) {
-    return NextResponse.json({ error: "Failed to analyze" }, { status: 500 });
+  } catch (e: any) {
+    console.error("AI Analysis Error:", e);
+    return NextResponse.json({ error: "Failed to analyze", message: e.message }, { status: 500 });
   }
 }

@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Rescura",
+    "slug": "rescura-mobile",
+    "scheme": "rescura",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#f5f5f4"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rescura.mobile",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "location", "remote-notification"]
+      }
+    },
+    "android": {
+      "package": "com.rescura.mobile",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-notifications",
+      "expo-location",
+      "expo-background-fetch",
+      "expo-task-manager"
+    ]
+  }
+}

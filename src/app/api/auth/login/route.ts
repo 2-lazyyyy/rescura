@@ -14,77 +14,57 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient()
 
-    // Sign in with Supabase Auth
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: error.message },
-        { status: 401 }
-      )
-    }
-
-    if (!data.user) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication failed' },
-        { status: 401 }
-      )
-    }
-
-    // Get user profile from custom user table
-    const { data: profile, error: profileError } = await supabase
+    // Custom plaintext auth for Next.js API
+    const { data: userRecord, error: userError } = await supabase
       .from('users')
       .select('*')
-      .eq('id', data.user.id)
-      .single()
+      .eq('email', email)
+      .eq('password', password)
+      .maybeSingle()
 
-    // If profile doesn't exist, create a basic one
-    if (profileError && profileError.code === 'PGRST116') {
-      const { data: newProfile, error: createError } = await supabase
-        .from('users')
-        .insert({
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.email?.split('@')[0] || 'User',
-          role: 'user',
-        })
-        .select()
-        .single()
+    if (userError || !userRecord) {
+      // If not in users, check organizations
+      const { data: orgRecord, error: orgError } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password)
+        .maybeSingle()
 
-      if (createError) {
-        console.error('Error creating user profile:', createError)
+      if (orgError || !orgRecord) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid credentials' },
+          { status: 401 }
+        )
       }
 
       return NextResponse.json({
         success: true,
         user: {
-          id: data.user.id,
-          email: data.user.email,
-          name: newProfile?.name || data.user.email?.split('@')[0] || 'User',
-          role: newProfile?.role || 'user',
-          phone: newProfile?.phone,
-          organizationId: newProfile?.organization_id,
-          image: newProfile?.image,
+          id: orgRecord.id,
+          email: orgRecord.email,
+          name: orgRecord.name,
+          role: 'organization',
+          phone: orgRecord.phone,
+          organizationId: orgRecord.id,
+          image: null,
         },
-        session: data.session,
+        session: null // Custom auth doesn't use Supabase Auth sessions
       })
     }
 
     return NextResponse.json({
       success: true,
       user: {
-        id: data.user.id,
-        email: data.user.email,
-        name: profile?.name || data.user.email?.split('@')[0] || 'User',
-        role: profile?.role || 'user',
-        phone: profile?.phone,
-        organizationId: profile?.organization_id,
-        image: profile?.image,
+        id: userRecord.id,
+        email: userRecord.email,
+        name: userRecord.name,
+        role: userRecord.is_admin ? 'admin' : 'user',
+        phone: userRecord.phone,
+        organizationId: null,
+        image: userRecord.image,
       },
-      session: data.session,
+      session: null
     })
   } catch (error) {
     console.error('Login error:', error)

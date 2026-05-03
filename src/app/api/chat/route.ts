@@ -1,22 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 type AssistantKind = 'emergency' | 'mental'
-type Language = 'en' | 'my'
+type Language = 'en' | 'my' | 'th' | 'vi' | 'id' | 'ms'
 type ChatFilePayload = { name?: string; type?: string; dataUrl?: string }
 
-const SYSTEM_PROMPTS: Record<AssistantKind, Record<Language, string>> = {
+const SYSTEM_PROMPTS: Record<AssistantKind, Partial<Record<Language, string>>> = {
   emergency: {
     en: "You are an AI assistant helping with earthquake & emergency safety. Be concise, practical, and safety-first. If this is a real emergency, remind the user to call 199.",
     my: "သင်သည် ငလျင်နှင့် အရေးပေါ် လုံခြုံရေးအကြံပြုမှုအတွက် ကူညီပေးသော AI ဖြစ်သည်။ တိုတောင်းသော်လည်း အသုံးဝင်အောင်ဖြေပါ။ တကယ်အရေးပေါ်ဖြစ်ပါက 199 ကို ခေါ်ရန် အမြဲသတိပေးပါ။",
   },
   mental: {
-    en: "You are a warm, supportive mental-health companion (not a clinician). Respond with empathy and calming language. Offer grounding such as box breathing (4-4-4-4). If the user indicates crisis or self-harm risk, suggest contacting a trusted person or calling 199.",
-    my: "သင်သည် နူးညံ့သိမ်မွေ့သော စိတ်ကျန်းမာရေး အကူအညီပေးသူ (ဆေးဘက်ဝင်မဟုတ်) ဖြစ်သည်။ နူးညံ့သိမ်မွေ့သောစကားဖြင့် အားပေးပါ။ အကွက်အသက်ရှူ ၄-၄-၄-၄ ကဲ့သို့သော ဂရောင်ဒင်းကို ပြောပြပါ။ အရေးကြီးစိုးရိမ်မှု/ကိုယ်ပိုင်အန္တရာယ်ရှိပါက ယုံကြည်ရသောသူ သို့မဟုတ် 199 ကို ဆက်သွယ်ရန် အကြံပြုပါ။",
+    en: "You are a warm, supportive mental-health companion (not a clinician). Respond with empathy and calming language. Keep your responses short and concise (under 3-4 sentences). Do not write long paragraphs. Offer grounding such as box breathing (4-4-4-4). If the user indicates crisis or self-harm risk, suggest contacting a trusted person or calling 199.",
+    my: "သင်သည် နူးညံ့သိမ်မွေ့သော စိတ်ကျန်းမာရေး အကူအညီပေးသူ (ဆေးဘက်ဝင်မဟုတ်) ဖြစ်သည်။ နူးညံ့သိမ်မွေ့သောစကားဖြင့် အားပေးပါ။ စာကို တိုတိုနှင့် လိုရင်းပဲ ဖြေပါ (၃ ကြောင်း သို့မဟုတ် ၄ ကြောင်းထက် မပိုပါစေနှင့်)။ စာအရှည်ကြီးများ မရေးပါနှင့်။ အကွက်အသက်ရှူ ၄-၄-၄-၄ ကဲ့သို့သော ဂရောင်ဒင်းကို ပြောပြပါ။ အရေးကြီးစိုးရိမ်မှု/ကိုယ်ပိုင်အန္တရာယ်ရှိပါက ယုံကြည်ရသောသူ သို့မဟုတ် 199 ကို ဆက်သွယ်ရန် အကြံပြုပါ။",
   },
 }
 
+function getSystemPrompt(assistant: AssistantKind, lang: Language): string {
+  const p = SYSTEM_PROMPTS[assistant][lang]
+  if (p) return p
+  // Fallback for other ASEAN languages to English prompt but remind AI of the target language
+  const base = SYSTEM_PROMPTS[assistant]['en'] || ""
+  return `${base} Respond in the following language: ${lang}`
+}
+
 function normalizeLanguage(input: unknown): Language {
-  return input === 'my' ? 'my' : 'en'
+  const l = String(input).toLowerCase()
+  if (['en', 'my', 'th', 'vi', 'id', 'ms'].includes(l)) return l as Language
+  return 'en'
 }
 
 function normalizeAssistant(input: unknown): AssistantKind {
@@ -65,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     const normalizedLanguage = normalizeLanguage(language)
     const normalizedAssistant = normalizeAssistant(assistant)
-    const systemPrompt = SYSTEM_PROMPTS[normalizedAssistant][normalizedLanguage]
+    const systemPrompt = getSystemPrompt(normalizedAssistant, normalizedLanguage)
     const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
 
     const fileParts = Array.isArray(files)
