@@ -18,8 +18,9 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native'
-import MapView, { Marker, Polyline } from 'react-native-maps'
+import MapboxWebView from '../../src/components/MapboxWebView'
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as Location from 'expo-location'
@@ -36,6 +37,7 @@ import { useSession } from '../../src/lib/session'
 import { theme } from '../../src/theme'
 import { supabase } from '../../src/lib/supabase'
 import { fetchMapboxRoute } from '../../src/services/map'
+
 
 const { height: SCREEN_H } = Dimensions.get('window')
 
@@ -66,6 +68,8 @@ export default function HomeScreen() {
   const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null)
   const [routingPinId, setRoutingPinId] = useState<string | null>(null)  // tracks which pin is routing
   const [isFilteringPending, setIsFilteringPending] = useState(false)
+  const [isLegendVisible, setIsLegendVisible] = useState(true)
+  const [mapCenter, setMapCenter] = useState<{ latitude: number; longitude: number } | undefined>(undefined)
   const rotateAnim = useRef(new Animated.Value(0)).current
 
   // ---- Bottom Sheet animation ----
@@ -231,24 +235,15 @@ export default function HomeScreen() {
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : (
-        <MapView style={styles.map} initialRegion={region}>
-          {userLocation && (
-            <Marker coordinate={userLocation} title="You" pinColor="#3b82f6" />
-          )}
-          {displayedPins.map((pin) => (
-            <Marker
-              key={pin.id}
-              coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-              title={pin.type === 'damaged' ? 'Help needed' : 'Safe location'}
-              description={pin.description || ''}
-              pinColor={pin.type === 'damaged' ? '#dc2626' : '#059669'}
-              onCalloutPress={() => router.push(`/pin-details/${pin.id}` as any)}
-            />
-          ))}
-          {routeCoordinates.length > 0 && (
-            <Polyline coordinates={routeCoordinates} strokeColor="#8b5cf6" strokeWidth={4} />
-          )}
-        </MapView>
+        <MapboxWebView
+          style={styles.map}
+          pins={displayedPins}
+          userLocation={userLocation}
+          routeCoordinates={routeCoordinates}
+          center={mapCenter || region}
+          zoom={12}
+          onPinPress={(pinId) => router.push(`/pin-details/${pinId}` as any)}
+        />
       )}
 
       {/* ===== FLOATING HEADER ===== */}
@@ -257,20 +252,65 @@ export default function HomeScreen() {
           colors={['rgba(255,255,255,0.96)', 'rgba(255,255,255,0.88)']}
           style={styles.floatingHeaderInner}
         >
-          <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+            <Image source={require('../../assets/icon.png')} style={{ width: 32, height: 32, borderRadius: 8 }} />
             <Text style={styles.floatingGreeting} numberOfLines={1}>
               {user ? `Hi, ${user.name?.split(' ')[0]} 👋` : 'Rescura'}
             </Text>
-            <Text style={styles.floatingSubtext}>
-              {pins.length} pins · {supplies.length} supply zones
-            </Text>
           </View>
-          {pendingCount > 0 && (
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>{pendingCount} pending</Text>
-            </View>
-          )}
+          <TouchableOpacity 
+            style={styles.locationBtn}
+            onPress={() => {
+              if (userLocation) {
+                setMapCenter({
+                  latitude: userLocation.latitude,
+                  longitude: userLocation.longitude,
+                });
+              } else {
+                Alert.alert('Location unavailable', 'Please enable location services.');
+              }
+            }}
+          >
+            <Ionicons name="navigate" size={18} color={theme.colors.primary} />
+          </TouchableOpacity>
         </LinearGradient>
+      </View>
+
+      {/* ===== MAP LEGEND ===== */}
+      <View style={[styles.legend, { top: insets.top + 95 }]}>
+        <TouchableOpacity 
+          style={styles.legendHeader} 
+          onPress={() => setIsLegendVisible(!isLegendVisible)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.legendTitle}>Legend</Text>
+          <Ionicons name={isLegendVisible ? "eye" : "eye-off"} size={16} color={theme.colors.mutedForeground} />
+        </TouchableOpacity>
+        
+        {isLegendVisible && (
+          <View style={styles.legendContent}>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
+              <Text style={styles.legendText}>Damaged Location</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: '#22c55e' }]} />
+              <Text style={styles.legendText}>Safe Zone</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendSmallDot, { backgroundColor: '#facc15' }]} />
+              <Text style={styles.legendText}>Pending</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendSmallDot, { backgroundColor: '#4ade80' }]} />
+              <Text style={styles.legendText}>Confirmed</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendSmallDot, { backgroundColor: '#60a5fa' }]} />
+              <Text style={styles.legendText}>Completed</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* ===== ROUTE INFO OVERLAY ===== */}
@@ -391,12 +431,12 @@ export default function HomeScreen() {
 
           {/* Stats row */}
           <View style={styles.statsRow}>
-            <View style={[styles.statCard, { borderColor: '#3b82f6' }]}>
-              <Text style={[styles.statValue, { color: '#3b82f6' }]}>{pins.length}</Text>
-              <Text style={styles.statLabel}>Active Pins</Text>
+            <View style={[styles.statCard, { borderColor: '#ef4444' }]}>
+              <Text style={[styles.statValue, { color: '#ef4444' }]}>{pins.length}</Text>
+              <Text style={styles.statLabel}>Incidents</Text>
             </View>
-            <View style={[styles.statCard, { borderColor: '#dc2626' }]}>
-              <Text style={[styles.statValue, { color: '#dc2626' }]}>{pendingCount}</Text>
+            <View style={[styles.statCard, { borderColor: '#f59e0b' }]}>
+              <Text style={[styles.statValue, { color: '#f59e0b' }]}>{pendingCount}</Text>
               <Text style={styles.statLabel}>Pending</Text>
             </View>
             <View style={[styles.statCard, { borderColor: '#10b981' }]}>
@@ -516,7 +556,7 @@ const styles = StyleSheet.create({
   floatingHeader: {
     position: 'absolute',
     left: 16,
-    right: 72,
+    right: 16,
   },
   floatingHeaderInner: {
     flexDirection: 'row',
@@ -534,9 +574,27 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.6)',
   },
   floatingGreeting: { fontSize: 16, fontWeight: '800', color: theme.colors.foreground },
-  floatingSubtext: { fontSize: 12, color: theme.colors.mutedForeground, marginTop: 2 },
-  pendingBadge: { backgroundColor: '#fee2e2', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
-  pendingBadgeText: { color: '#dc2626', fontWeight: '800', fontSize: 12 },
+  locationBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: 10
+  },
+
+  legend: {
+    position: 'absolute', right: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    padding: 12, borderRadius: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4,
+    zIndex: 10
+  },
+  legendHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  legendTitle: { fontSize: 12, fontWeight: '700', color: theme.colors.foreground },
+  legendContent: { marginTop: 6, gap: 6 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 12, height: 12, borderRadius: 6 },
+  legendSmallDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 2 },
+  legendText: { fontSize: 11, color: theme.colors.mutedForeground, fontWeight: '500' },
 
   // Route overlay
   routeOverlay: {

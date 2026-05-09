@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, LogBox, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { ActivityIndicator, Alert, LogBox, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, PanResponder, Platform, KeyboardAvoidingView } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -15,29 +15,12 @@ import { safetyModules } from '../src/data/safety-modules'
 import { DisasterEvent } from '../src/services/alerts'
 import { useAlerts } from '../src/lib/AlertContext'
 import Constants, { AppOwnership } from 'expo-constants'
-import MapView, { Marker } from 'react-native-maps'
+import MapboxWebView from '../src/components/MapboxWebView'
 
 type TabValue = 'family' | 'safety' | 'alerts'
 
 // Note: SDK 53+ removed remote notification support in Expo Go.
-// We use dynamic loading to only activate system notifications in standalone/dev-client builds.
-const isExpoGo = Constants.appOwnership === AppOwnership.Expo;
-
-// Dynamic import to avoid fatal errors on load in Expo Go
-let Notifications: any = null;
-try {
-  Notifications = require('expo-notifications');
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-} catch (e) {
-  console.warn('Notifications system could not be initialized', e);
-}
+// Notifications are now initialized centrally in app/_layout.tsx
 
 export default function DashboardScreen() {
   const { user } = useSession()
@@ -78,6 +61,17 @@ export default function DashboardScreen() {
   const [sendingSafetyCheckId, setSendingSafetyCheckId] = useState<string | null>(null)
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
+
+  const addModalPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 50) {
+          setShowAddModal(false)
+        }
+      },
+    })
+  ).current
 
   const loadData = useCallback(async () => {
     if (!user) return
@@ -308,7 +302,7 @@ export default function DashboardScreen() {
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="people-outline" size={40} color={theme.colors.mutedForeground} />
               </View>
-              <Text style={styles.emptyStateTitle}>Your network is empty</Text>
+              <Text style={styles.emptyStateTitle}>Your network is empty !!!!  </Text>
               <Text style={styles.emptyStateSub}>Add family members to start tracking their safety status.</Text>
               <TouchableOpacity style={styles.emptyStateBtn} onPress={() => setShowAddModal(true)}>
                 <Text style={styles.emptyStateBtnText}>Add First Member</Text>
@@ -693,12 +687,15 @@ export default function DashboardScreen() {
       />
 
       {/* Add Member Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent>
-        <View style={styles.modalBg}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHandle} />
-            
-            <View style={styles.modalHeader}>
+      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPressOut={() => setShowAddModal(false)}>
+            <TouchableOpacity activeOpacity={1} style={styles.modalContainer}>
+              <View {...addModalPanResponder.panHandlers} style={{ paddingBottom: 10 }}>
+                <View style={styles.modalHandle} />
+              </View>
+              
+              <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Add Family Member</Text>
                 <Text style={styles.modalSubtitle}>Search and invite to your network</Text>
@@ -734,22 +731,44 @@ export default function DashboardScreen() {
 
             {searchResults.length > 0 && !selectedUser && (
               <ScrollView style={styles.searchResults} showsVerticalScrollIndicator={false}>
-                {searchResults.map((u, idx) => (
-                  <TouchableOpacity 
-                    key={u.id} 
-                    style={[styles.searchItem, idx === searchResults.length - 1 && { borderBottomWidth: 0 }]} 
-                    onPress={() => setSelectedUser(u)}
-                  >
-                    <View style={styles.searchAvatar}>
-                      <Text style={styles.searchAvatarText}>{u.name?.charAt(0) || 'U'}</Text>
-                    </View>
-                    <View style={styles.searchItemInfo}>
-                      <Text style={styles.searchName}>{u.name}</Text>
-                      <Text style={styles.searchPhone}>{u.phone || u.email}</Text>
-                    </View>
-                    <Ionicons name="person-add-outline" size={20} color={theme.colors.primary} />
-                  </TouchableOpacity>
-                ))}
+                {searchResults.map((u, idx) => {
+                  const isFamily = familyMembers.some(m => m.id === u.id)
+                  const isSent = sentRequests.some(r => r.to_user_id === u.id)
+                  
+                  return (
+                    <TouchableOpacity 
+                      key={u.id} 
+                      style={[styles.searchItem, idx === searchResults.length - 1 && { borderBottomWidth: 0 }]} 
+                      onPress={() => {
+                        if (!isFamily && !isSent) {
+                          setSelectedUser(u)
+                        }
+                      }}
+                      activeOpacity={isFamily || isSent ? 1 : 0.7}
+                    >
+                      <View style={styles.searchAvatar}>
+                        <Text style={styles.searchAvatarText}>{u.name?.charAt(0) || 'U'}</Text>
+                      </View>
+                      <View style={styles.searchItemInfo}>
+                        <Text style={styles.searchName}>{u.name}</Text>
+                        <Text style={styles.searchPhone}>{u.phone || u.email}</Text>
+                      </View>
+                      {isFamily ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                          <Text style={{ fontSize: 12, color: '#10b981', fontWeight: '600' }}>Family</Text>
+                        </View>
+                      ) : isSent ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="time" size={20} color="#f59e0b" />
+                          <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: '600' }}>Pending</Text>
+                        </View>
+                      ) : (
+                        <Ionicons name="person-add-outline" size={20} color={theme.colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  )
+                })}
               </ScrollView>
             )}
 
@@ -803,8 +822,9 @@ export default function DashboardScreen() {
                 </View>
               </View>
             )}
-          </View>
-        </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   )
@@ -1131,7 +1151,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32, 
     padding: 24, 
     paddingBottom: 40,
-    maxHeight: '85%',
+    height: '60%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
@@ -1697,21 +1717,21 @@ function LocationMapModal({ visible, onClose, location }: { visible: boolean, on
               <Ionicons name="close" size={24} color={theme.colors.foreground} />
             </TouchableOpacity>
           </View>
-          <MapView
+          <MapboxWebView
             style={{ flex: 1 }}
-            initialRegion={{
-              latitude: location.lat,
-              longitude: location.lng,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker
-              coordinate={{ latitude: location.lat, longitude: location.lng }}
-              title={location.name}
-              description={location.address}
-            />
-          </MapView>
+            center={{ latitude: location.lat, longitude: location.lng }}
+            zoom={14}
+            pins={[
+              {
+                id: 'user-loc',
+                latitude: location.lat,
+                longitude: location.lng,
+                type: 'safe',
+                description: location.address,
+                status: 'confirmed'
+              }
+            ]}
+          />
         </View>
       </View>
     </Modal>

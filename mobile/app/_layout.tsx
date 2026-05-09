@@ -12,6 +12,28 @@ LogBox.ignoreLogs([
   'remote notifications) functionality provided by expo-notifications was removed from Expo Go'
 ]);
 import { useEffect } from 'react'
+import { Platform } from 'react-native'
+import * as Notifications from 'expo-notifications'
+
+// Ensure notifications show up in foreground and create Android channel for standalone APKs
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('default', {
+    name: 'default',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#FF231F7C',
+  });
+}
 import { AppShell } from '../src/components/AppShell'
 import { SessionProvider, useSession } from '../src/lib/session'
 import { isPublicRoute, isRouteAllowed } from '../src/lib/access'

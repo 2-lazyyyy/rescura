@@ -656,4 +656,10 @@ const styles = StyleSheet.create({
   rejectBtnText: { color: '#ef4444', fontWeight: '700', fontSize: 14 },
 
   disabledButton: { opacity: 0.55 },
+
+  // Error action buttons (missing styles)
+  secondaryButton:     { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: theme.colors.background },
+  secondaryButtonText: { fontSize: 14, fontWeight: '700', color: theme.colors.foreground },
+  primaryButton:       { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, backgroundColor: theme.colors.primary },
+  primaryButtonText:   { fontSize: 14, fontWeight: '700', color: '#fff' },
 })

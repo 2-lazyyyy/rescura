@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import MapView, { Marker } from 'react-native-maps'
+import MapboxWebView from '../src/components/MapboxWebView'
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import { router } from 'expo-router'
@@ -53,9 +53,23 @@ export default function PinComposerScreen() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   })
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null)
 
   useEffect(() => {
     fetchItems().then((res) => { if (res.success) setAvailableItems(res.items) })
+
+    // Fetch user's actual location for the blue dot
+    ;(async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync()
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({})
+          setUserLocation({ latitude: location.coords.latitude, longitude: location.coords.longitude })
+        }
+      } catch (e) {
+        console.log('Location error', e)
+      }
+    })()
   }, [])
 
   // Auto-reverse geocode when coordinates change
@@ -72,18 +86,23 @@ export default function PinComposerScreen() {
 
   const useCurrentLocation = async () => {
     setLocating(true)
-    const permission = await Location.requestForegroundPermissionsAsync()
-    if (permission.status !== 'granted') {
-      Alert.alert('Location permission required')
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync()
+      if (permission.status !== 'granted') {
+        Alert.alert('Location permission required')
+        return
+      }
+      const current = await Location.getCurrentPositionAsync({})
+      const pos = { latitude: current.coords.latitude, longitude: current.coords.longitude }
+      setUserLocation(pos) // Update blue dot as well
+      setLatitude(String(pos.latitude))
+      setLongitude(String(pos.longitude))
+      setMapRegion((prev) => ({ ...prev, ...pos, latitudeDelta: 0.01, longitudeDelta: 0.01 }))
+    } catch (e) {
+      Alert.alert('Location Error', 'Unable to get current location.')
+    } finally {
       setLocating(false)
-      return
     }
-    const current = await Location.getCurrentPositionAsync({})
-    const pos = { latitude: current.coords.latitude, longitude: current.coords.longitude }
-    setLatitude(String(pos.latitude))
-    setLongitude(String(pos.longitude))
-    setMapRegion((prev) => ({ ...prev, ...pos, latitudeDelta: 0.01, longitudeDelta: 0.01 }))
-    setLocating(false)
   }
 
   const pickImage = async () => {
@@ -248,7 +267,7 @@ export default function PinComposerScreen() {
             <TextInput
               value={phone}
               onChangeText={setPhone}
-              placeholder="Phone number (optional)"
+              placeholder="Phone number (required)"
               placeholderTextColor={theme.colors.mutedForeground}
               style={styles.input}
               keyboardType="phone-pad"
@@ -263,7 +282,7 @@ export default function PinComposerScreen() {
             <TextInput
               value={description}
               onChangeText={setDescription}
-              placeholder="Describe the situation and what help is needed…"
+              placeholder="Describe the situation and what help is needed… (required)"
               placeholderTextColor={theme.colors.mutedForeground}
               style={[styles.input, styles.textArea]}
               multiline
@@ -299,28 +318,25 @@ export default function PinComposerScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Incident location</Text>
           <View style={styles.mapContainer}>
-            <MapView
+            <MapboxWebView
               style={styles.map}
-              region={mapRegion}
-              onRegionChangeComplete={setMapRegion}
-              onPress={(e) => {
-                const coord = e.nativeEvent.coordinate
-                setLatitude(String(coord.latitude))
-                setLongitude(String(coord.longitude))
+              center={mapRegion}
+              userLocation={userLocation}
+              onMapPress={(coords) => {
+                setLatitude(String(coords.latitude))
+                setLongitude(String(coords.longitude))
               }}
-            >
-              {latitude && longitude && (
-                <Marker
-                  coordinate={{ latitude: Number(latitude), longitude: Number(longitude) }}
-                  draggable
-                  onDragEnd={(e) => {
-                    const coord = e.nativeEvent.coordinate
-                    setLatitude(String(coord.latitude))
-                    setLongitude(String(coord.longitude))
-                  }}
-                />
-              )}
-            </MapView>
+              draggableMarker={
+                latitude && longitude
+                  ? { latitude: Number(latitude), longitude: Number(longitude) }
+                  : null
+              }
+              draggableMarkerType={type as 'damaged' | 'safe'}
+              onMarkerDragEnd={(coords) => {
+                setLatitude(String(coords.latitude))
+                setLongitude(String(coords.longitude))
+              }}
+            />
             <TouchableOpacity style={styles.mapLocateOverlay} onPress={useCurrentLocation}>
               <Ionicons name="locate" size={20} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -504,7 +520,7 @@ const styles = StyleSheet.create({
   aiCatText: { color: '#1d4ed8', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   mapContainer: { height: 260, borderRadius: 24, overflow: 'hidden', borderWidth: 1.5, borderColor: theme.colors.border, marginBottom: 4, position: 'relative' },
   map:          { ...StyleSheet.absoluteFillObject },
-  mapLocateOverlay: { position: 'absolute', bottom: 12, right: 12, backgroundColor: theme.colors.background, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 },
+  mapLocateOverlay: { position: 'absolute', top: 12, right: 12, backgroundColor: theme.colors.background, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 },
   addressBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f3f4f6', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb' },
   addressText: { flex: 1, fontSize: 14, color: theme.colors.foreground, fontWeight: '600' },
   coordText:   { fontSize: 11, color: theme.colors.mutedForeground, textAlign: 'right', marginTop: -4 },

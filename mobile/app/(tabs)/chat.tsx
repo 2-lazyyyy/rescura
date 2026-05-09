@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import {
   Alert,
   FlatList,
@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ScreenHeader } from '../../src/components/ScreenHeader'
 import { theme } from '../../src/theme'
 import { askAssistant } from '../../src/services/ai'
+import { checkModelExists, downloadModel } from '../../src/services/offlineAi'
 
 type AssistantKind = 'emergency' | 'mental'
 type ChatLanguage = 'en' | 'my' | 'th' | 'vi' | 'id' | 'ms'
@@ -90,6 +91,40 @@ export default function ChatScreen() {
   ])
   const [isSending, setIsSending] = useState(false)
 
+  // Offline AI States
+  const [modelExists, setModelExists] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+
+  useEffect(() => {
+    checkModelExists().then(setModelExists)
+  }, [])
+
+  const handleDownloadModel = async () => {
+    Alert.alert(
+      "Download Offline AI",
+      "This will download a ~350MB AI model to your device so you can get emergency assistance without the internet. Proceed?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Download", 
+          onPress: async () => {
+            setIsDownloading(true);
+            setDownloadProgress(0);
+            const success = await downloadModel((progress) => setDownloadProgress(progress));
+            setIsDownloading(false);
+            if (success) {
+              setModelExists(true);
+              Alert.alert("Success", "Offline AI model downloaded successfully. You are ready for emergencies.");
+            } else {
+              Alert.alert("Error", "Failed to download the model. Please check your internet connection and try again.");
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const send = async () => {
     if (!message.trim()) return
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -146,19 +181,39 @@ export default function ChatScreen() {
 
       {/* ===== Controls ===== */}
       <View style={styles.topBar}>
-        <View style={styles.assistantTabs}>
-          <SegmentControl options={ASSISTANT_OPTS} value={assistant} onChange={setAssistant} />
+        <View style={styles.topRow}>
+          <View style={{ flex: 1 }}>
+            <SegmentControl options={ASSISTANT_OPTS} value={assistant} onChange={setAssistant} />
+          </View>
+          <View style={styles.langSelectorWrap}>
+            <TouchableOpacity 
+              style={styles.langBtn} 
+              onPress={() => setShowLangMenu(!showLangMenu)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="globe-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.langBtnText}>{ASEAN_LANGS.find(l => l.value === language)?.flag}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        
-        <View style={styles.langSelectorWrap}>
-          <TouchableOpacity 
-            style={styles.langBtn} 
-            onPress={() => setShowLangMenu(!showLangMenu)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="globe-outline" size={20} color={theme.colors.primary} />
-            <Text style={styles.langBtnText}>{ASEAN_LANGS.find(l => l.value === language)?.flag}</Text>
-          </TouchableOpacity>
+
+        {/* Offline AI Status Banner */}
+        <View style={[styles.offlineBanner, modelExists ? styles.offlineBannerReady : {}]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name={modelExists ? "cloud-offline" : "cloud-download-outline"} size={16} color={modelExists ? "#059669" : "#64748b"} />
+            <Text style={[styles.offlineText, modelExists ? { color: "#059669" } : {}]}>
+              {modelExists 
+                ? "Offline AI Ready (Network Fallback Enabled)" 
+                : isDownloading 
+                  ? `Downloading Model... ${Math.round(downloadProgress * 100)}%` 
+                  : "Offline AI Not Downloaded"}
+            </Text>
+          </View>
+          {!modelExists && !isDownloading && (
+            <TouchableOpacity style={styles.downloadBtn} onPress={handleDownloadModel}>
+              <Text style={styles.downloadBtnText}>Download</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -239,22 +294,55 @@ const bubbleStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
 
-  // Controls bar (below header)
-  controls: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
-  },
-
   // Thread
   thread: { paddingVertical: 16, gap: 4, flexGrow: 1 },
 
   // Controls bar redesigned
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: theme.colors.border, gap: 12 },
-  assistantTabs: { flex: 1 },
+  topBar: { 
+    backgroundColor: theme.colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    zIndex: 10,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  offlineBannerReady: {
+    backgroundColor: '#ecfdf5',
+    borderTopColor: '#d1fae5',
+  },
+  offlineText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  downloadBtn: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  downloadBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  listContent: { padding: 16, gap: 16, paddingBottom: 24 },
   langSelectorWrap: { width: 54, height: 44, borderRadius: 12, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' },
   langBtn: { alignItems: 'center', justifyContent: 'center', gap: 2 },
   langBtnText: { fontSize: 10 },

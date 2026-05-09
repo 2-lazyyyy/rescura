@@ -6,6 +6,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -17,6 +18,8 @@ import { useSession } from '../../src/lib/session'
 import { fetchOrganizationSupplies } from '../../src/services/organization'
 import { getUserOrgMember } from '../../src/services/pins'
 import { fetchOrganizationById } from '../../src/services/organizations'
+import { checkModelExists, downloadModel, deleteModel } from '../../src/services/offlineAi'
+import * as Updates from 'expo-updates'
 
 // Types
 type ShortcutItem = {
@@ -75,6 +78,14 @@ export default function ProfileScreen() {
   const [isVolunteer, setIsVolunteer] = useState(false)
   const [orgName, setOrgName] = useState<string | null>(null)
 
+  // Offline AI States
+  const [modelExists, setModelExists] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+
+  // OTA Updates State
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+
   const shortcuts = user?.role === 'admin'
     ? ROLE_SHORTCUTS.admin
     : user?.isOrg
@@ -109,7 +120,88 @@ export default function ProfileScreen() {
       }
     }
     load()
+    checkModelExists().then(setModelExists)
   }, [user])
+
+  const handleDownloadModel = async () => {
+    Alert.alert(
+      "Download Offline AI",
+      "This will download a ~350MB AI model to your device for emergency assistance without internet. Proceed?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Download", 
+          onPress: async () => {
+            setIsDownloading(true);
+            setDownloadProgress(0);
+            const success = await downloadModel((progress) => setDownloadProgress(progress));
+            setIsDownloading(false);
+            if (success) {
+              setModelExists(true);
+              Alert.alert("Success", "Offline AI model downloaded successfully.");
+            } else {
+              Alert.alert("Error", "Failed to download the model.");
+            }
+          }
+        }
+      ]
+    )
+  }
+
+  const handleDeleteModel = async () => {
+    Alert.alert(
+      "Remove Offline AI",
+      "Are you sure you want to delete the offline AI model? This will free up ~350MB of storage.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteModel();
+            setModelExists(false);
+            Alert.alert("Deleted", "Offline AI model removed.");
+          }
+        }
+      ]
+    )
+  }
+
+  const handleCheckUpdate = async () => {
+    try {
+      setIsCheckingUpdate(true)
+      const update = await Updates.checkForUpdateAsync()
+      
+      if (update.isAvailable) {
+        Alert.alert(
+          "Update Available",
+          "A new version of the app is available. Would you like to download and install it now?",
+          [
+            { text: "Cancel", style: "cancel" },
+            { 
+              text: "Update Now", 
+              onPress: async () => {
+                try {
+                  await Updates.fetchUpdateAsync();
+                  Alert.alert("Success", "Update downloaded! The app will now restart.", [
+                    { text: "OK", onPress: () => Updates.reloadAsync() }
+                  ]);
+                } catch (e) {
+                  Alert.alert("Error", "Failed to download update.");
+                }
+              }
+            }
+          ]
+        )
+      } else {
+        Alert.alert("Up to Date", "You are already running the latest version of the app.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "Could not check for updates. Make sure you are connected to the internet.");
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }
 
   const handleLogout = async () => {
     await logout()
@@ -194,6 +286,71 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.actionLabel}>Family</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* ===== App Settings ===== */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>App Settings</Text>
+          <TouchableOpacity
+            style={[styles.shortcutRow, styles.shortcutRowLast]}
+            onPress={handleCheckUpdate}
+            activeOpacity={0.7}
+            disabled={isCheckingUpdate}
+          >
+            <View style={[styles.shortcutIcon, { backgroundColor: '#f3e8ff' }]}>
+              {isCheckingUpdate ? (
+                <ActivityIndicator size="small" color="#9333ea" />
+              ) : (
+                <Ionicons name="cloud-download-outline" size={20} color="#9333ea" />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.shortcutLabel}>Check for Updates</Text>
+              <Text style={styles.shortcutDesc}>Get the latest OTA features</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ===== Offline AI Manager ===== */}
+        <View style={[styles.card, { borderColor: modelExists ? '#10b981' : theme.colors.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, paddingBottom: 4 }}>
+            <Text style={[styles.cardTitle, { paddingTop: 0, paddingBottom: 0, fontSize: 13, fontWeight: '700', color: theme.colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5 }]}>Offline AI System</Text>
+            {modelExists && <Ionicons name="checkmark-circle" size={20} color="#10b981" />}
+          </View>
+          
+          <View style={{ paddingVertical: 12 }}>
+            <Text style={{ fontSize: 14, color: theme.colors.foreground, marginBottom: 12 }}>
+              {modelExists 
+                ? "The emergency AI model is downloaded and ready to assist you without an internet connection." 
+                : "Download the offline AI model (~350MB) to get emergency assistance even when you lose internet access."}
+            </Text>
+            
+            {isDownloading ? (
+              <View style={{ backgroundColor: '#f1f5f9', padding: 12, borderRadius: 10, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.primary, marginBottom: 6 }}>
+                  Downloading... {Math.round(downloadProgress * 100)}%
+                </Text>
+                <View style={{ width: '100%', height: 6, backgroundColor: '#cbd5e1', borderRadius: 3, overflow: 'hidden' }}>
+                  <View style={{ width: `${downloadProgress * 100}%`, height: '100%', backgroundColor: theme.colors.primary }} />
+                </View>
+              </View>
+            ) : modelExists ? (
+              <TouchableOpacity 
+                style={{ backgroundColor: '#fee2e2', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }}
+                onPress={handleDeleteModel}
+              >
+                <Text style={{ color: '#dc2626', fontWeight: '700', fontSize: 14 }}>Remove Model (Free Storage)</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={{ backgroundColor: theme.colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' }}
+                onPress={handleDownloadModel}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Download Offline AI</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* ===== Feature Shortcuts ===== */}

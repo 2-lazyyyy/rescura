@@ -1,6 +1,6 @@
 import type { SessionUser } from './session'
 
-const AUTH_ROUTES = new Set(['/auth', '/', '/(tabs)/index', '/(tabs)/profile', '/pin'])
+const AUTH_ROUTES = new Set(['/auth', '/', '/(tabs)/index', '/(tabs)/profile', '/pin', '/(tabs)/chat'])
 const ADMIN_ROUTES = new Set(['/admin'])
 const ORG_ROUTES = new Set(['/organization', '/test-supplies'])
 const OPS_ROUTES = new Set(['/organizations', '/volunteers'])
@@ -12,7 +12,7 @@ function normalizeRoute(pathname: string): string {
 
 export function isPublicRoute(pathname: string): boolean {
   const route = normalizeRoute(pathname)
-  return AUTH_ROUTES.has(route) || route === '/(tabs)/index' || route === '/(tabs)/profile' || route === '/pin'
+  return AUTH_ROUTES.has(route) || route === '/(tabs)/index' || route === '/(tabs)/profile' || route === '/pin' || route === '/(tabs)/chat'
 }
 
 export function hasAdminAccess(user: SessionUser | null): boolean {
