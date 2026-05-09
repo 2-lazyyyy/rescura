@@ -52,7 +52,8 @@ export function DisasterToasts() {
 
   useEffect(() => {
     try {
-      setIsMuted(localStorage.getItem(MUTE_KEY) === 'true')
+      const saved = localStorage.getItem(MUTE_KEY)
+      setIsMuted(saved === null ? true : saved === 'true')
     } catch {}
 
     const handleMuteChange = (e: any) => {
@@ -129,7 +130,7 @@ export function DisasterToasts() {
           const t = normalizeTime((data as any).time)
           
           // Only show popup if not muted
-          if (localStorage.getItem(MUTE_KEY) !== 'true') {
+          if (localStorage.getItem(MUTE_KEY) === 'false') {
             setCurr({ ...data, time: t, severity: deriveSeverity(data) })
             setOpen(true)
           }
@@ -166,7 +167,7 @@ export function DisasterToasts() {
     const enriched: IncomingAlert = { ...ev, id, time: t, severity: deriveSeverity({ ...ev, time: t }) }
     
     // Only show popup if not muted
-    if (localStorage.getItem(MUTE_KEY) !== 'true') {
+    if (localStorage.getItem(MUTE_KEY) === 'false') {
       setCurr(enriched)
       setOpen(true)
     }

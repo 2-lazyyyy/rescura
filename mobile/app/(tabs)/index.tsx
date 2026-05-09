@@ -21,7 +21,7 @@ import {
   Image,
 } from 'react-native'
 import MapboxWebView from '../../src/components/MapboxWebView'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as Location from 'expo-location'
 import { Ionicons } from '@expo/vector-icons'
@@ -70,6 +70,7 @@ export default function HomeScreen() {
   const [isFilteringPending, setIsFilteringPending] = useState(false)
   const [isLegendVisible, setIsLegendVisible] = useState(true)
   const [mapCenter, setMapCenter] = useState<{ latitude: number; longitude: number } | undefined>(undefined)
+  const params = useLocalSearchParams<{ destLat?: string; destLng?: string; pinId?: string; t?: string }>()
   const rotateAnim = useRef(new Animated.Value(0)).current
 
   // ---- Bottom Sheet animation ----
@@ -146,6 +147,22 @@ export default function HomeScreen() {
       })()
   }, [user?.id])
 
+  // ---- Handle incoming routing params (from alerts) ----
+  useEffect(() => {
+    if (params.destLat && params.destLng && userLocation) {
+      const lat = parseFloat(params.destLat)
+      const lng = parseFloat(params.destLng)
+      if (!isNaN(lat) && !isNaN(lng)) {
+        // Center map
+        setMapCenter({ latitude: lat, longitude: lng })
+        // Collapse sheet
+        snapTo(snapTopClosed)
+        // Calculate route
+        handleCalculateRoute({ id: params.pinId, latitude: lat, longitude: lng })
+      }
+    }
+  }, [params.destLat, params.destLng, params.pinId, params.t, !!userLocation])
+
   useEffect(() => {
     const ch = supabase
       .channel(`home:pins:${Date.now()}`)
@@ -188,26 +205,10 @@ export default function HomeScreen() {
     return m > 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`
   }
 
-  const handleQuickConfirm = async (pin: any) => {
+  const handleQuickConfirm = (pin: any) => {
     if (!user?.id || !orgMemberId) { Alert.alert('Not authorized', 'You must be an active tracker to confirm pins.'); return }
-    Alert.alert(
-      'Confirm Pin',
-      `Confirm this ${pin.type === 'damaged' ? 'help request' : 'safe location'} pin?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setConfirmingPinId(pin.id)
-            try {
-              const res = await updatePinStatus(pin.id, 'confirmed', orgMemberId, user.id)
-              if (res.success) { Alert.alert('Success', 'Pin confirmed'); await load() }
-              else Alert.alert('Failed', res.error || 'Could not confirm pin')
-            } finally { setConfirmingPinId(null) }
-          },
-        },
-      ]
-    )
+    // Instead of immediate confirm, navigate to detail page for verification
+    router.push(`/pin-details/${pin.id}`)
   }
 
   const toggleFilter = () => {
@@ -497,21 +498,23 @@ export default function HomeScreen() {
                       {pin.type === 'damaged' ? 'Help Request' : 'Safe Location'}
                     </Text>
                   </View>
-                  <View style={[
-                    styles.statusBadge, 
-                    pin.status === 'confirmed' ? styles.statusConfirmed : 
-                    pin.status === 'completed' ? styles.statusCompleted : 
-                    styles.statusPending
-                  ]}>
-                    <Text style={[
-                      styles.statusText,
-                      { color: pin.status === 'confirmed' ? '#059669' : 
-                               pin.status === 'completed' ? '#1e40af' : 
-                               '#d97706' }
+                    <View style={[
+                      styles.statusBadge, 
+                      pin.status === 'confirmed' ? styles.statusConfirmed : 
+                      pin.status === 'completed' ? styles.statusCompleted : 
+                      pin.status === 'cancelled' ? styles.statusCancelled :
+                      styles.statusPending
                     ]}>
-                      {pin.status}
-                    </Text>
-                  </View>
+                      <Text style={[
+                        styles.statusText,
+                        { color: pin.status === 'confirmed' ? '#059669' : 
+                                 pin.status === 'completed' ? '#1e40af' : 
+                                 pin.status === 'cancelled' ? '#dc2626' :
+                                 '#d97706' }
+                      ]}>
+                        {pin.status}
+                      </Text>
+                    </View>
                 </View>
 
                 {/* Description */}
@@ -728,6 +731,7 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   statusConfirmed: { backgroundColor: '#dcfce7' },
   statusCompleted: { backgroundColor: '#dbeafe' },
+  statusCancelled: { backgroundColor: '#fee2e2' },
   statusPending: { backgroundColor: '#fef9c3' },
   statusText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   pinDesc: { color: theme.colors.mutedForeground, fontSize: 13, lineHeight: 18 },

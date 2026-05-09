@@ -105,22 +105,15 @@ export default function SafetyCourseDetailScreen() {
           </View>
         )}
 
-        {/* Video Training Section */}
-        {module.videoUrl && (
-          <TouchableOpacity 
-            style={styles.videoCard} 
-            onPress={() => Linking.openURL(module.videoUrl as string)}
-          >
-            <View style={styles.videoIconWrap}>
-              <Ionicons name="play" size={24} color={theme.colors.primary} />
-            </View>
-            <View style={styles.videoTextWrap}>
-              <Text style={styles.videoTitle}>Video Training</Text>
-              <Text style={styles.videoSub}>Watch a detailed demonstration</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
-          </TouchableOpacity>
-        )}
+        {/* Learning Content Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Learning Material</Text>
+          <View style={styles.contentCard}>
+            {module.content.split('\n').map((line, i) => (
+              <Text key={i} style={styles.contentText}>{line}</Text>
+            ))}
+          </View>
+        </View>
 
         {/* Footer Action */}
         <View style={styles.footer}>
@@ -249,4 +242,22 @@ const styles = StyleSheet.create({
   backBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#cbd5e1' },
   backBtnText: { fontWeight: '700', color: '#64748b' },
   title: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
+  contentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  contentText: {
+    fontSize: 16,
+    color: '#475569',
+    lineHeight: 26,
+    marginBottom: 12,
+  },
 })

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateGeminiContent } from "@/lib/ai/gemini";
 import { createServerClient } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
@@ -36,13 +37,6 @@ export async function POST(req: NextRequest) {
       time: h.created_at
     }))
 
-    const apiKey = process.env.GEMINI_API_KEY
-    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash"
-
-    if (!apiKey) {
-      return NextResponse.json({ error: 'missing_ai_key' }, { status: 500 })
-    }
-
     const prompt = [
       "You are an expert tracking AI system used for disaster response.",
       "Below are the recent GPS coordinates and timestamps of a missing person.",
@@ -55,23 +49,11 @@ export async function POST(req: NextRequest) {
       "JSON Output:"
     ].join("\n")
 
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1 }
-        }),
-      }
-    )
+    const { data } = await generateGeminiContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1 }
+    })
 
-    if (!resp.ok) {
-      throw new Error(`Gemini API error: ${resp.statusText}`)
-    }
-
-    const data = await resp.json()
     const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text
     
     if (!text) {

@@ -11,6 +11,7 @@ import * as Location from 'expo-location'
 import * as Localization from 'expo-localization'
 // Notifications moved to dynamic require to avoid Expo Go import-time errors
 import { fetchFamilyMembers, findUsers, sendFamilyRequest, getSentFamilyRequests, cancelFamilyRequest, removeFamilyMemberById, fetchLastSeenForUsers, sendSafetyCheck } from '../src/services/family'
+import { fetchPins } from '../src/services/pins'
 import { safetyModules } from '../src/data/safety-modules'
 import { DisasterEvent } from '../src/services/alerts'
 import { useAlerts } from '../src/lib/AlertContext'
@@ -28,6 +29,7 @@ export default function DashboardScreen() {
   const [activeTab, setActiveTab] = useState<TabValue>('family')
   const [familyMembers, setFamilyMembers] = useState<any[]>([])
   const [sentRequests, setSentRequests] = useState<any[]>([])
+  const [confirmedPins, setConfirmedPins] = useState<any[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [completedModules, setCompletedModules] = useState<string[]>([])
@@ -108,10 +110,14 @@ export default function DashboardScreen() {
       const requests = await getSentFamilyRequests(user.id)
       setSentRequests(requests || [])
 
+      // Fetch confirmed pins for situational awareness
+      const pinsRes = await fetchPins()
+      if (pinsRes.success) {
+        setConfirmedPins(pinsRes.pins.filter(p => p.status === 'confirmed'))
+      }
+
       const storedModules = await AsyncStorage.getItem('completedModules')
       if (storedModules) setCompletedModules(JSON.parse(storedModules))
-      const points = await AsyncStorage.getItem('safetyPoints')
-      if (points) setTotalPoints(parseInt(points))
       const kit = await AsyncStorage.getItem('emergencyKitItems')
       if (kit) {
         const items = JSON.parse(kit)
@@ -164,6 +170,7 @@ export default function DashboardScreen() {
       .channel(`family_dashboard:${user.id}:${Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'family_members', filter: `user_id=eq.${user.id}` }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'family_requests', filter: `from_user_id=eq.${user.id}` }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pins' }, () => loadData())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
         const n = payload.new
         if (n.type === 'safety_check_ok' || n.type === 'safety_check_not_ok') {
@@ -182,7 +189,9 @@ export default function DashboardScreen() {
     const timer = setTimeout(async () => {
       setIsSearching(true)
       const res = await findUsers(searchQuery)
-      setSearchResults(res || [])
+      // Filter out the current user so they can't add themselves
+      const filtered = (res || []).filter((u: any) => u.id !== user?.id)
+      setSearchResults(filtered)
       setIsSearching(false)
     }, 400)
     return () => clearTimeout(timer)
@@ -220,6 +229,10 @@ export default function DashboardScreen() {
 
   const handleSendRequest = async () => {
     if (!user || !selectedUser || !relation) return
+    if (user.id === selectedUser.id) {
+      Alert.alert('Error', 'You cannot add yourself as a family member.')
+      return
+    }
     setIsSending(true)
     const res = await sendFamilyRequest(user.id, selectedUser.id, relation)
     if (res.success) {
@@ -379,7 +392,40 @@ export default function DashboardScreen() {
 
                       <TouchableOpacity 
                         style={styles.moreBtn} 
-                        onPress={() => member.status === 'pending' ? handleCancelRequest(member.requestId) : handleUnlink(member.id)}
+                        onPress={() => {
+                          if (member.status === 'pending') {
+                            Alert.alert(
+                              'Cancel Request',
+                              `Do you want to cancel the request to ${member.name}?`,
+                              [
+                                { text: 'No', style: 'cancel' },
+                                { text: 'Yes, Cancel', style: 'destructive', onPress: () => handleCancelRequest(member.requestId) }
+                              ]
+                            )
+                          } else {
+                            Alert.alert(
+                              'Manage Member',
+                              `What would you like to do with ${member.name}?`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { 
+                                  text: 'Remove Member', 
+                                  style: 'destructive', 
+                                  onPress: () => {
+                                    Alert.alert(
+                                      'Confirm Removal',
+                                      `Are you sure you want to remove ${member.name}? This cannot be undone.`,
+                                      [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        { text: 'Remove', style: 'destructive', onPress: () => handleUnlink(member.id) }
+                                      ]
+                                    )
+                                  } 
+                                }
+                              ]
+                            )
+                          }
+                        }}
                       >
                         <Ionicons name={member.status === 'pending' ? "close-circle" : "ellipsis-vertical"} size={18} color="#94a3b8" />
                       </TouchableOpacity>
@@ -489,7 +535,7 @@ export default function DashboardScreen() {
               <Ionicons name="book" size={24} color={theme.colors.primary} />
               <View>
                 <Text style={styles.cardTitle}>Safety Modules</Text>
-                <Text style={styles.cardDescription}>Complete training to earn badges</Text>
+                <Text style={styles.cardDescription}>Interactive guides for emergency preparedness.</Text>
               </View>
             </View>
             <View style={styles.list}>
@@ -591,13 +637,7 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* DEBUG BUTTON */}
-            <TouchableOpacity
-              style={{ backgroundColor: '#fff1f2', padding: 8, borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#fecdd3', alignItems: 'center' }}
-              onPress={simulateLocalAlert}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#be123c' }}>DEBUG: Simulate Local Earthquake</Text>
-            </TouchableOpacity>
+
 
             {liveAlerts.length === 0 ? (
               <View style={styles.emptyState}>
@@ -751,6 +791,7 @@ export default function DashboardScreen() {
         visible={mapModalOpen}
         onClose={() => setMapModalOpen(false)}
         location={selectedLocation}
+        pins={confirmedPins}
       />
 
       {/* Add Member Modal */}
@@ -1780,7 +1821,7 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
   )
 }
 
-function LocationMapModal({ visible, onClose, location }: { visible: boolean, onClose: () => void, location: any }) {
+function LocationMapModal({ visible, onClose, location, pins }: { visible: boolean, onClose: () => void, location: any, pins: any[] }) {
   if (!location) return null
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -1788,7 +1829,9 @@ function LocationMapModal({ visible, onClose, location }: { visible: boolean, on
         <View style={{ height: '80%', backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }}>
           <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: theme.colors.foreground }}>{location.name}'s Last Seen</Text>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: theme.colors.foreground }}>
+                {location.name.includes('(Predicted)') ? location.name : `${location.name}'s Last Seen`}
+              </Text>
               <Text style={{ fontSize: 12, color: theme.colors.mutedForeground }} numberOfLines={1}>{location.address || 'Location data available'}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={{ padding: 8 }}>
@@ -1797,18 +1840,10 @@ function LocationMapModal({ visible, onClose, location }: { visible: boolean, on
           </View>
           <MapboxWebView
             style={{ flex: 1 }}
+            userLocation={{ latitude: location.lat, longitude: location.lng }}
             center={{ latitude: location.lat, longitude: location.lng }}
             zoom={14}
-            pins={[
-              {
-                id: 'user-loc',
-                latitude: location.lat,
-                longitude: location.lng,
-                type: 'safe',
-                description: location.address,
-                status: 'confirmed'
-              }
-            ]}
+            pins={pins}
           />
         </View>
       </View>

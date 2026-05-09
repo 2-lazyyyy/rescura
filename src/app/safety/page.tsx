@@ -196,7 +196,7 @@ export default function SafetyPage() {
             {t('safety.title')}
           </h1>
           <p className="text-gray-600">
-            Complete safety training modules to earn badges and prepare for emergencies
+            Access essential safety training modules to prepare for emergencies and improve your first aid skills
           </p>
         </div>
 
@@ -238,17 +238,7 @@ export default function SafetyPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Badges Earned</p>
-                  <p className="text-2xl font-bold text-purple-600">{completedModules}</p>
-                </div>
-                <Award className="w-8 h-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
+
         </div>
 
         <Tabs defaultValue="all" className="space-y-6">

@@ -6,7 +6,7 @@ interface Pin {
   id: string
   latitude: number
   longitude: number
-  type: 'damaged' | 'safe'
+  type: 'damaged' | 'safe' | 'standard'
   description?: string
   status?: string
 }
@@ -150,6 +150,15 @@ function buildMapHTML(props: MapboxWebViewProps): string {
 
       // Pin markers
       PINS.forEach(function(pin) {
+        if (pin.type === 'standard') {
+          // Use default Mapbox marker (standard red teardrop)
+          new mapboxgl.Marker({ color: '#ef4444' })
+            .setLngLat([pin.longitude, pin.latitude])
+            .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML('<b>' + (pin.description || 'Location') + '</b>'))
+            .addTo(map);
+          return;
+        }
+
         var el = document.createElement('div');
 
         // Outer wrapper
@@ -176,9 +185,10 @@ function buildMapHTML(props: MapboxWebViewProps): string {
 
         // Popup
         var badgeClass = pin.status === 'pending' ? 'badge-pending' : pin.status === 'confirmed' ? 'badge-confirmed' : 'badge-other';
+        var popupTitle = pin.type === 'damaged' ? 'Incident' : (pin.type === 'safe' ? 'Safe Zone' : (pin.phone || 'Pin'));
         var popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 20 })
           .setHTML(
-            '<div class="popup-title">' + (pin.phone || 'Pin') + '</div>' +
+            '<div class="popup-title">' + popupTitle + '</div>' +
             '<div class="popup-desc">' + (pin.description || '') + '</div>' +
             '<span class="popup-badge ' + badgeClass + '">' + (pin.status || 'unknown') + '</span>'
           );
@@ -189,7 +199,7 @@ function buildMapHTML(props: MapboxWebViewProps): string {
           );
         });
 
-        new mapboxgl.Marker(el)
+        new mapboxgl.Marker(markerDiv)
           .setLngLat([pin.longitude, pin.latitude])
           .setPopup(popup)
           .addTo(map);

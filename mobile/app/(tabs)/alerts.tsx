@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { router } from 'expo-router'
 import {
   ActivityIndicator,
   Alert,
@@ -128,6 +129,25 @@ export default function AlertsScreen() {
     }
   }
 
+  const handlePinNavigation = (item: any) => {
+    const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload
+    const lat = payload?.latitude ?? payload?.lat
+    const lng = payload?.longitude ?? payload?.lng
+
+    if (lat != null && lng != null) {
+      // Navigate to map tab with route parameters
+      router.push({
+        pathname: '/(tabs)',
+        params: {
+          destLat: String(lat),
+          destLng: String(lng),
+          pinId: payload.pin_id || payload.id,
+          t: Date.now()
+        }
+      })
+    }
+  }
+
   const displayItems = activeFilter === 'unread' ? items.filter(i => !i.read) : items
 
   return (
@@ -194,7 +214,10 @@ export default function AlertsScreen() {
               <View style={styles.cardContainer}>
                 <TouchableOpacity 
                   style={styles.cardMain}
-                  onPress={() => handleMarkRead(item.id, item.read)}
+                  onPress={() => {
+                    handleMarkRead(item.id, item.read)
+                    handlePinNavigation(item)
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.alertIconWrap, { backgroundColor: meta.bg }]}>

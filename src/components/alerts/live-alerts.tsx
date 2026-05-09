@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Ably from 'ably'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle, Droplets, Wind, MapPin, Clock, Navigation, Globe } from 'lucide-react'
+import { AlertTriangle, Droplets, Wind, MapPin, Clock, Navigation, Globe, BellOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import EventMapModal from './event-map-modal'
 
@@ -83,6 +83,29 @@ export function LiveAlerts({ className }: { className?: string }) {
       return (localStorage.getItem('alerts_region') as 'global' | 'myanmar') || 'global'
     } catch { return 'global' }
   })
+  const [isMuted, setIsMuted] = useState(true)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ly_disaster_alerts_muted')
+      setIsMuted(saved === null ? true : saved === 'true')
+    } catch {}
+
+    const handleMuteChange = (e: any) => {
+      setIsMuted(e.detail?.muted === true)
+    }
+    window.addEventListener('disaster-mute-change', handleMuteChange)
+    return () => window.removeEventListener('disaster-mute-change', handleMuteChange)
+  }, [])
+
+  const toggleMute = () => {
+    try {
+      const newVal = !isMuted
+      setIsMuted(newVal)
+      localStorage.setItem('ly_disaster_alerts_muted', String(newVal))
+      window.dispatchEvent(new CustomEvent('disaster-mute-change', { detail: { muted: newVal } }))
+    } catch {}
+  }
 
   useEffect(() => {
     try { localStorage.setItem('alerts_region', region) } catch {}
@@ -483,10 +506,29 @@ export function LiveAlerts({ className }: { className?: string }) {
               </div>
             </div>
           </div>
-          <Button size="sm" variant="outline" onClick={sendTestEqAlert} title="Broadcast a test earthquake alert" className="shadow-sm w-full sm:w-auto">
-            <AlertTriangle className="w-4 h-4 mr-2" />
-            <span className="hidden xs:inline">Send Test Alert</span><span className="xs:hidden">Test</span>
-          </Button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 hidden xs:inline">Notifications:</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleMute}
+              className={`flex items-center gap-2 transition-all duration-200 ${isMuted ? 'bg-gray-50 text-gray-400 border-gray-200' : 'bg-amber-50 text-amber-600 border-amber-200 shadow-sm'}`}
+              title={isMuted ? "Turn on disaster notifications" : "Turn off disaster notifications"}
+            >
+              {isMuted ? (
+                <>
+                  <BellOff className="w-3.5 h-3.5" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Off</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
+                  <span className="text-xs font-bold uppercase tracking-wider">On</span>
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 

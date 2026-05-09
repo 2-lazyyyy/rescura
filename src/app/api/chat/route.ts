@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateGeminiContent } from "@/lib/ai/gemini";
 
 type AssistantKind = 'emergency' | 'mental'
 type Language = 'en' | 'my' | 'th' | 'vi' | 'id' | 'ms'
@@ -65,14 +66,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY not set', message: 'AI service is not configured.' },
-        { status: 500 }
-      )
-    }
-
     const normalizedLanguage = normalizeLanguage(language)
     const normalizedAssistant = normalizeAssistant(assistant)
     const systemPrompt = getSystemPrompt(normalizedAssistant, normalizedLanguage)
@@ -92,7 +85,7 @@ export async function POST(request: NextRequest) {
       ? `${systemPrompt}\n\nUser: ${message}\n\n${fileParts.join('\n\n')}`
       : `${systemPrompt}\n\nUser: ${message}`
 
-    const body = {
+    const { data } = await generateGeminiContent({
       contents: [
         {
           role: 'user',
@@ -103,28 +96,10 @@ export async function POST(request: NextRequest) {
         temperature: normalizedAssistant === 'mental' ? 0.5 : 0.7,
         maxOutputTokens: 512,
       },
-    }
+    })
 
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }
-    )
-
-    if (!resp.ok) {
-      const errText = await resp.text()
-      return NextResponse.json(
-        { error: 'gemini_error', message: 'AI service error.', detail: errText },
-        { status: 502 }
-      )
-    }
-
-    const json = await resp.json()
     const content =
-      json?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? '').join('') ?? ''
+      data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? '').join('') ?? ''
 
     if (!content.trim()) {
       return NextResponse.json(

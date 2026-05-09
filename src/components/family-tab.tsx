@@ -8,13 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Users, Heart, Plus, MessageCircle, MapPin, XCircle, Search, CheckCircle, AlertTriangle, HelpCircle, Clock, Loader2 } from 'lucide-react'
+import { Users, Heart, Plus, MessageCircle, MapPin, XCircle, Search, CheckCircle, AlertTriangle, HelpCircle, Clock, Loader2, Sparkles } from 'lucide-react'
 import { TabsContent } from '@/components/ui/tabs'
 import { fetchFamilyMembers, sendMessage, sendFamilyRequest, findUsers, removeFamilyMemberById, sendSafetyCheck, getSentFamilyRequests, cancelFamilyRequest, fetchLastSeenForUsers } from '@/services/family'
 import { subscribeToNotifications, NotificationRecord, getNotifications } from '@/services/notifications'
 import { supabase } from '@/lib/supabase'
 import { useEffect, useMemo } from 'react'
 import { EventMapModal } from '@/components/alerts/event-map-modal'
+import { fetchPins, Pin } from '@/services/pins'
 
 interface Props {
   t: any
@@ -67,6 +68,61 @@ export default function FamilyTab(props: Props) {
   const [cancelingRequestId, setCancelingRequestId] = useState<string | null>(null)
   const [sendingSafetyCheckId, setSendingSafetyCheckId] = useState<string | null>(null)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
+  const [isPredictingId, setIsPredictingId] = useState<string | null>(null)
+  const [confirmedPins, setConfirmedPins] = useState<Pin[]>([])
+
+  useEffect(() => {
+    const loadPins = async () => {
+      const res = await fetchPins()
+      if (res.success && res.pins) {
+        setConfirmedPins(res.pins.filter(p => p.status === 'confirmed'))
+      }
+    }
+    loadPins()
+
+    // IMPROVEMENT: Realtime subscription ensures that the family safety dashboard 
+    // is always synchronized with the latest field intelligence without requiring manual refreshes.
+    const channel = supabase
+      .channel('pins-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pins' }, () => {
+        loadPins()
+      })
+      .subscribe()
+
+    return () => {
+      try { (channel as any)?.unsubscribe?.() } catch {}
+    }
+  }, [])
+
+  const handlePredictLocation = async (member: any) => {
+    setIsPredictingId(member.id)
+    try {
+      const res = await fetch(`/api/ai/predict-location`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: member.id })
+      })
+      const data = await res.json()
+      
+      if (!res.ok || data.error) {
+        alert(data.message || 'Not enough location history to predict trajectory.')
+        return
+      }
+
+      setSelectedLocation({
+        name: `${member.name} (Predicted)`,
+        lat: data.prediction.lat,
+        lng: data.prediction.lng,
+        address: `AI Prediction (Confidence: ${Math.round(data.prediction.confidence * 100)}%)\nReason: ${data.prediction.reason}`
+      })
+      setMapModalOpen(true)
+    } catch (err) {
+      console.error('predict error', err)
+      alert('Failed to connect to prediction AI.')
+    } finally {
+      setIsPredictingId(null)
+    }
+  }
 
   // Fetch sent requests and merge with family members
   useEffect(() => {
@@ -309,7 +365,8 @@ export default function FamilyTab(props: Props) {
                                 setSearching(true)
                                 try {
                                   const results = await findUsers(v)
-                                  setSearchResults(results || [])
+                                  const filtered = (results || []).filter((u: any) => u.id !== user?.id)
+                                  setSearchResults(filtered)
                                   setSelectedFound(null)
                                 } catch (err) {
                                   console.error('search users failed', err)
@@ -382,6 +439,10 @@ export default function FamilyTab(props: Props) {
                                 onClick={async () => {
                                 if (!user?.id || !selectedFound?.id || !memberRelation.trim()) {
                                   alert(t('family.specifyRelation'))
+                                  return
+                                }
+                                if (user.id === selectedFound.id) {
+                                  alert("You cannot add yourself as a family member.")
                                   return
                                 }
                                 setIsSendingRequest(true)
@@ -486,22 +547,38 @@ export default function FamilyTab(props: Props) {
                             </span>
                           </div>
                           {lastSeenMap[member.id]?.lat && lastSeenMap[member.id]?.lng && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 shrink-0"
-                              onClick={() => {
-                                setSelectedLocation({
-                                  name: member.name || 'Unknown',
-                                  lat: lastSeenMap[member.id].lat,
-                                  lng: lastSeenMap[member.id].lng,
-                                  address: lastSeenMap[member.id]?.address
-                                })
-                                setMapModalOpen(true)
-                              }}
-                            >
-                              <MapPin className="w-3 h-3" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2.5 bg-sky-50 hover:bg-sky-100 text-sky-700 hover:text-sky-800 shrink-0"
+                                title="Smart Location Forecaster (AI)"
+                                onClick={() => handlePredictLocation(member)}
+                                disabled={isPredictingId === member.id}
+                              >
+                                {isPredictingId === member.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Sparkles className="w-3 h-3" />
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 shrink-0"
+                                onClick={() => {
+                                  setSelectedLocation({
+                                    name: member.name || 'Unknown',
+                                    lat: lastSeenMap[member.id].lat,
+                                    lng: lastSeenMap[member.id].lng,
+                                    address: lastSeenMap[member.id]?.address
+                                  })
+                                  setMapModalOpen(true)
+                                }}
+                              >
+                                <MapPin className="w-3 h-3" />
+                              </Button>
+                            </div>
                           )}
                         </div>
                       )}
@@ -597,10 +674,16 @@ export default function FamilyTab(props: Props) {
         <EventMapModal
           open={mapModalOpen}
           onOpenChange={setMapModalOpen}
-          title={selectedLocation ? `${selectedLocation.name}'s Last Seen Location` : 'Location'}
+          title={selectedLocation ? (selectedLocation.name.includes('(Predicted)') ? selectedLocation.name : `${selectedLocation.name}'s Last Seen Location`) : 'Location'}
           latitude={selectedLocation?.lat ?? null}
           longitude={selectedLocation?.lng ?? null}
           subtitle={selectedLocation?.address}
+          pins={confirmedPins.map(p => ({
+            lat: p.lat,
+            lng: p.lng,
+            type: p.type as any,
+            description: p.description
+          }))}
         />
       </TabsContent>
     </>

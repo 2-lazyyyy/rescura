@@ -360,8 +360,16 @@ export default function PinComposerScreen() {
                 setLongitude(String(coords.longitude))
               }}
             />
-            <TouchableOpacity style={styles.mapLocateOverlay} onPress={useCurrentLocation}>
-              <Ionicons name="locate" size={20} color={theme.colors.primary} />
+            <TouchableOpacity 
+              style={styles.mapLocateOverlay} 
+              onPress={useCurrentLocation}
+              disabled={locating}
+            >
+              {locating ? (
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+              ) : (
+                <Ionicons name="locate" size={20} color={theme.colors.primary} />
+              )}
             </TouchableOpacity>
           </View>
           

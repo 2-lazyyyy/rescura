@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateGeminiContent } from "@/lib/ai/gemini";
 
 type Suggestion = {
   isValid: boolean;
@@ -70,34 +71,18 @@ function heuristicAnalyze(description: string, allowed?: string[]): Suggestion {
   }
 
   // Quantities
-  // e.g., "2 injured", "two injured", "20 water", "10 blankets"
   const numberWords: Record<string, number> = {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10,
-    eleven: 11,
-    twelve: 12,
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
   };
 
-  const numFromWord = (w: string) => (w in numberWords ? numberWords[w] : NaN);
-
-  const tokens = text.split(/[^a-z0-9]+/g).filter(Boolean);
   const asNumber = (s: string) => {
     const n = parseInt(s, 10);
     if (!isNaN(n)) return n;
-    const nw = numFromWord(s);
-    return isNaN(nw) ? NaN : nw;
+    const nw = numberWords[s.toLowerCase()];
+    return nw !== undefined ? nw : NaN;
   };
 
-  const getNextNumber = (i: number) => asNumber(tokens[i + 1] || "");
-
+  const tokens = text.split(/[^a-z0-9]+/g).filter(Boolean);
   let injuredCount = 0;
   let fatalCount = 0;
 
@@ -127,17 +112,14 @@ function heuristicAnalyze(description: string, allowed?: string[]): Suggestion {
     addCat("critical");
   }
 
-  // Generic supplies if any strong signal
   if (criticalWords.some((w) => text.includes(w)) || text.includes("collapsed")) {
     items.push({ name: "Water Bottles", qty: Math.max(12, injuredCount * 6) });
   }
 
   severity = Math.min(1, Math.max(0, severity));
   confidence = Math.min(1, Math.max(0.2, confidence));
-
   if (categories.length === 0) categories.push("general");
 
-  // Map to allowed names and merge
   const merged: Record<string, number> = {};
   for (const it of items) {
     const canon = toCanonicalAllowed(it.name, allowed);
@@ -158,39 +140,23 @@ export async function POST(req: Request) {
       allowedItems?: string[];
       location?: { lat: number, lng: number };
     };
+
     if (!description || !description.trim()) {
       return NextResponse.json({ error: "Description is required" }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
-    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
     if (apiKey) {
       try {
         const allowedSection = Array.isArray(allowedItems) && allowedItems.length
-          ? [
-              "Allowed item names (must use only these):",
-              ...allowedItems.map((n) => `- ${n}`),
-            ].join("\n")
+          ? ["Allowed item names:", ...allowedItems.map((n) => `- ${n}`)].join("\n")
           : "";
 
         const prompt = [
-          "You are an emergency triage assistant.",
-          "Return STRICT JSON only (no prose).",
-          "Schema: {",
-          "  \"isValid\": boolean (true if description/photo represent a real emergency or incident),",
-          "  \"reason\": string (brief explanation of your decision/analysis),",
-          "  \"severity\": number (0..1),",
-          "  \"categories\": string[],",
-          "  \"items\": Array<{ name: string, qty: number }>,",
-          "  \"confidence\": number (0..1)",
-          "}",
-          "Rules:",
-          "- If 'isValid' is false, keep severity 0 and items empty, but explain why in 'reason'.",
-          "- categories from: [structural, medical, flooding, fire, general, critical] (choose any).",
-          "- items must use names from the allowed list only; if none apply, return an empty items array.",
-          "- qty must be positive integers; max 10 items.",
-          "- If uncertain, still return best-guess with reasonable qty.",
+          "You are an emergency triage assistant. Return STRICT JSON only.",
+          "Schema: { \"isValid\": boolean, \"reason\": string, \"severity\": number, \"categories\": string[], \"items\": Array<{name:string, qty:number}>, \"confidence\": number }",
+          "Rules: use only allowed item names. Max 10 items.",
           allowedSection,
           "Description:",
           description,
@@ -203,66 +169,54 @@ export async function POST(req: Request) {
           parts.push({ inline_data: { mime_type: imageMime, data: imageBase64 } });
         }
 
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts,
-                },
-              ],
-            }),
-          }
-        );
-        if (resp.ok) {
-          const data = (await resp.json()) as any;
-          const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            try {
-              const jsonStart = text.indexOf("{");
-              const jsonEnd = text.lastIndexOf("}");
-              const raw = jsonStart >= 0 && jsonEnd >= 0 ? text.slice(jsonStart, jsonEnd + 1) : text;
-              const parsed = JSON.parse(raw) as Suggestion;
-              // Clamp and normalize
-              let items: SuggestionItem[] = Array.isArray(parsed.items)
-                ? parsed.items
-                    .map((it: any) => ({ name: String(it.name || ""), qty: Math.max(1, Number(it.qty) || 1) }))
-                    .filter((it: any) => it.name && it.qty)
-                    .slice(0, 10)
-                : [];
-              // Enforce allowed list mapping
-              if (Array.isArray(allowedItems) && allowedItems.length) {
-                const mapped: Record<string, number> = {};
-                for (const it of items) {
-                  const canon = toCanonicalAllowed(it.name, allowedItems);
-                  if (!canon) continue;
-                  mapped[canon] = (mapped[canon] || 0) + it.qty;
-                }
-                items = Object.entries(mapped).map(([name, qty]) => ({ name, qty }));
+        const { data } = await generateGeminiContent({
+          contents: [{ role: "user", parts }],
+        });
+
+        const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          try {
+            const jsonStart = text.indexOf("{");
+            const jsonEnd = text.lastIndexOf("}");
+            const raw = jsonStart >= 0 && jsonEnd >= 0 ? text.slice(jsonStart, jsonEnd + 1) : text;
+            const parsed = JSON.parse(raw) as Suggestion;
+            
+            let items: SuggestionItem[] = Array.isArray(parsed.items)
+              ? parsed.items
+                  .map((it: any) => ({ name: String(it.name || ""), qty: Math.max(1, Number(it.qty) || 1) }))
+                  .filter((it: any) => it.name && it.qty)
+                  .slice(0, 10)
+              : [];
+
+            if (Array.isArray(allowedItems) && allowedItems.length) {
+              const mapped: Record<string, number> = {};
+              for (const it of items) {
+                const canon = toCanonicalAllowed(it.name, allowedItems);
+                if (!canon) continue;
+                mapped[canon] = (mapped[canon] || 0) + it.qty;
               }
-              const suggestion: Suggestion = {
-                isValid: !!parsed.isValid,
-                reason: String(parsed.reason || ""),
-                severity: Math.min(1, Math.max(0, parsed.severity ?? 0.5)),
-                categories: Array.isArray(parsed.categories) ? parsed.categories.slice(0, 5) : ["general"],
-                items: parsed.isValid ? items : [],
-                confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.6)),
-              };
-              return NextResponse.json({ suggestion, source: "gemini" });
-            } catch {
-              // fallthrough to heuristic
+              items = Object.entries(mapped).map(([name, qty]) => ({ name, qty }));
             }
+
+            const suggestion: Suggestion = {
+              isValid: !!parsed.isValid,
+              reason: String(parsed.reason || ""),
+              severity: Math.min(1, Math.max(0, parsed.severity ?? 0.5)),
+              categories: Array.isArray(parsed.categories) ? parsed.categories.slice(0, 5) : ["general"],
+              items: parsed.isValid ? items : [],
+              confidence: Math.min(1, Math.max(0, parsed.confidence ?? 0.6)),
+            };
+            return NextResponse.json({ suggestion, source: "gemini" });
+          } catch (e) {
+            console.warn("Failed to parse Gemini JSON, falling back to heuristic", e);
           }
         }
-      } catch {
-        // fallthrough to heuristic
+      } catch (err) {
+        console.error("Gemini API error, falling back to heuristic", err);
       }
     }
 
+    // Heuristic Fallback
     const suggestion = heuristicAnalyze(description, allowedItems);
     return NextResponse.json({ suggestion, source: "heuristic" });
   } catch (e: any) {

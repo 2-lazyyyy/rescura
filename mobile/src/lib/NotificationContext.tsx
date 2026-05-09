@@ -26,7 +26,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
       // Filter out disaster alerts from the inbox list
       const filtered = data.filter(n => n.type !== 'alert')
       setNotifications(filtered)
-      
+
       const [notiCount, msgCount] = await Promise.all([
         fetchNotiCount(user.id, { isOrg: user.isOrg }),
         fetchMsgCount(user.id)
@@ -86,7 +86,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     // Subscribe to MESSAGES table
     const msgSub = subscribeToIncomingMessages(user.id, (msg) => {
       setUnreadCount(prev => prev + 1)
-      
+
       // Show in-app notification
       void Notifications.scheduleNotificationAsync({
         content: {

@@ -42,7 +42,6 @@ const ROLE_SHORTCUTS: Record<string, ShortcutItem[]> = {
   ],
   org: [
     { label: 'Org Console',    route: '/organization',   icon: 'briefcase-outline',      description: 'Your organization' },
-    { label: 'Test Supplies',  route: '/test-supplies',  icon: 'cube-outline',           description: 'Supply management' },
     { label: 'Volunteers',     route: '/volunteers',     icon: 'people-outline',         description: 'Your volunteers' },
   ],
   user: [

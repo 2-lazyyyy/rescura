@@ -71,7 +71,8 @@ export function Navigation() {
 
   useEffect(() => {
     try {
-      setIsMuted(localStorage.getItem('ly_disaster_alerts_muted') === 'true')
+      const saved = localStorage.getItem('ly_disaster_alerts_muted')
+      setIsMuted(saved === null ? true : saved === 'true')
     } catch {}
   }, [])
 
@@ -1320,16 +1321,7 @@ export function Navigation() {
 
             {/* Right side items */}
             <div className="hidden md:flex items-center space-x-4">
-              {/* Disaster Alert Mute Toggle */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleMute}
-                className="flex items-center space-x-1"
-                title={isMuted ? "Unmute Disaster Alerts" : "Mute Disaster Alerts"}
-              >
-                {isMuted ? <BellOff className="w-4 h-4 text-gray-400" /> : <AlertTriangle className="w-4 h-4 text-amber-500" />}
-              </Button>
+
 
               {/* Language Toggle */}
               <Button
@@ -1725,16 +1717,7 @@ export function Navigation() {
 
             {/* Mobile menu button and notification */}
             <div className="md:hidden flex items-center gap-2">
-              {/* Disaster Alert Mute Toggle (Mobile) */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleMute}
-                className="relative p-2"
-                title={isMuted ? "Unmute Disaster Alerts" : "Mute Disaster Alerts"}
-              >
-                {isMuted ? <BellOff className="w-5 h-5 text-gray-400" /> : <AlertTriangle className="w-5 h-5 text-amber-500" />}
-              </Button>
+
 
               {/* Mobile Notifications - only when authenticated */}
               {isAuthenticated && (

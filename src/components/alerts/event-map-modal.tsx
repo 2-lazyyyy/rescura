@@ -6,6 +6,13 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Loader2 } from 'lucide-react'
 
+export interface PinMarker {
+  lat: number
+  lng: number
+  type: 'damaged' | 'safe'
+  description?: string
+}
+
 export interface EventMapModalProps {
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -14,6 +21,7 @@ export interface EventMapModalProps {
   latitude?: number | null
   subtitle?: string
   externalUrl?: string
+  pins?: PinMarker[]
 }
 
 // Expect token via NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_ACCESS_TOKEN (client-only)
@@ -21,93 +29,82 @@ const envToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.MAPBOX_ACCE
 
 console.log('[Mapbox token]', envToken)
 
-export function EventMapModal({ open, onOpenChange, title, longitude, latitude, subtitle, externalUrl }: EventMapModalProps) {
+export function EventMapModal({ open, onOpenChange, title, longitude, latitude, subtitle, externalUrl, pins }: EventMapModalProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const markerRef = useRef<mapboxgl.Marker | null>(null)
-  const initialisedRef = useRef(false)
+  const pinsMarkersRef = useRef<mapboxgl.Marker[]>([])
   const [loading, setLoading] = useState(false)
-  const retryTimerRef = useRef<number | null>(null)
 
-  function initMapIfReady(lon: number, lat: number) {
-    if (!mapContainerRef.current) return false
-    if (!envToken) return false
-    if (!initialisedRef.current) {
-      // @ts-ignore
-      mapboxgl.accessToken = envToken
-      initialisedRef.current = true
-      console.log('[EventMapModal] Mapbox token set, opening map modal.')
-    }
+  // Initialization and Map Sync
+  useEffect(() => {
+    if (!open || !mapContainerRef.current || longitude == null || latitude == null || !envToken) return
+
+    const lon = Number(longitude)
+    const lat = Number(latitude)
+
     if (!mapRef.current) {
       setLoading(true)
+      mapboxgl.accessToken = envToken
       mapRef.current = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: 'mapbox://styles/mapbox/streets-v12',
         center: [lon, lat],
         zoom: 14,
+        attributionControl: false
       })
-      setTimeout(() => {
-        mapRef.current?.resize()
-      }, 50)
+
       mapRef.current.on('load', () => {
         setLoading(false)
-      })
-      mapRef.current.on('error', (e) => {
-        console.error('[EventMapModal] Mapbox map error:', e?.error || e)
-        setLoading(false)
+        mapRef.current?.resize()
       })
     } else {
       mapRef.current.setCenter([lon, lat])
       mapRef.current.resize()
     }
-    if (markerRef.current) {
-      markerRef.current.remove()
-    }
-    markerRef.current = new mapboxgl.Marker().setLngLat([lon, lat]).addTo(mapRef.current)
-    return true
-  }
 
-  useEffect(() => {
-    if (!open) return
-    if (longitude == null || latitude == null) return
-    if (!envToken) {
-      console.warn('[EventMapModal] Missing Mapbox token (env).')
-      return
-    }
-
-    let attempts = 0
-    const tryInit = () => {
-      attempts++
-      const ok = initMapIfReady(longitude, latitude)
-      if (!ok && attempts < 20) {
-        retryTimerRef.current = window.setTimeout(tryInit, 50)
-      } else if (!ok) {
-        console.warn('[EventMapModal] Map container not ready after retries.')
-      }
-    }
-    tryInit()
+    // Main subject marker
+    if (markerRef.current) markerRef.current.remove()
+    markerRef.current = new mapboxgl.Marker({ color: '#3b82f6' })
+      .setLngLat([lon, lat])
+      .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`<b>${title || 'Subject'}</b><br/>${subtitle || ''}`))
+      .addTo(mapRef.current)
 
     return () => {
-      if (retryTimerRef.current) {
-        window.clearTimeout(retryTimerRef.current)
-        retryTimerRef.current = null
-      }
+      // Logic for cleanup is handled in a separate effect for 'open' changes
     }
-  }, [open, longitude, latitude])
+  }, [open, longitude, latitude, title, subtitle])
 
+  // Separate Effect for Pins Update
   useEffect(() => {
-    if (open) return
-    if (retryTimerRef.current) {
-      window.clearTimeout(retryTimerRef.current)
-      retryTimerRef.current = null
+    if (!mapRef.current || !open) return
+
+    // Clean up old pins
+    pinsMarkersRef.current.forEach(m => m.remove())
+    pinsMarkersRef.current = []
+
+    // Add new pins
+    if (pins && pins.length > 0) {
+      pins.forEach(p => {
+        const color = p.type === 'damaged' ? '#ef4444' : '#10b981'
+        const marker = new mapboxgl.Marker({ color })
+          .setLngLat([p.lng, p.lat])
+          .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`<b>${p.type === 'damaged' ? 'Incident' : 'Safe Zone'}</b><br/>${p.description || ''}`))
+          .addTo(mapRef.current!)
+        pinsMarkersRef.current.push(marker)
+      })
     }
-    if (markerRef.current) {
-      markerRef.current.remove()
-      markerRef.current = null
-    }
-    if (mapRef.current) {
+  }, [open, pins])
+
+  // Full cleanup on modal close
+  useEffect(() => {
+    if (!open && mapRef.current) {
+      if (markerRef.current) markerRef.current.remove()
+      pinsMarkersRef.current.forEach(m => m.remove())
       mapRef.current.remove()
       mapRef.current = null
+      markerRef.current = null
+      pinsMarkersRef.current = []
     }
   }, [open])
 

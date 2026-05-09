@@ -92,7 +92,7 @@ export default function TabsLayout() {
           }
         }} 
       />
-      <Tabs.Screen name="dashboard" options={{ title: 'Network' }} />
+      <Tabs.Screen name="dashboard" options={{ title: 'Dashboard' }} />
       <Tabs.Screen name="chat"      options={{ title: 'AI' }} />
       <Tabs.Screen name="profile"   options={{ title: 'Profile' }} />
       <Tabs.Screen name="messages"  options={{ href: null }} />

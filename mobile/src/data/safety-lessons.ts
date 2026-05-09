@@ -10,7 +10,6 @@ export type SafetyLessonRecord = {
   title: string
   category: string
   duration: string
-  rewardPoints: number
   steps: SafetyLessonStep[]
 }
 
@@ -21,7 +20,6 @@ export const safetyLessons: SafetyLessonRecord[] = [
     title: 'CPR Training',
     category: 'First Aid',
     duration: '15 min',
-    rewardPoints: 10,
     steps: [
       { id: 1, title: 'Check Responsiveness', content: 'Tap the person and ask loudly if they are okay. If no response, call emergency help immediately.' },
       { id: 2, title: 'Open Airway', content: 'Lay the person on a firm surface, tilt the head back slightly, and lift the chin to open the airway.' },
@@ -36,7 +34,6 @@ export const safetyLessons: SafetyLessonRecord[] = [
     title: 'First Aid Basics',
     category: 'First Aid',
     duration: '20 min',
-    rewardPoints: 10,
     steps: [
       { id: 1, title: 'Assess Safety', content: 'Before helping, ensure the scene is safe for both rescuer and victim.' },
       { id: 2, title: 'Call For Help', content: 'If injuries are serious, contact emergency services and share exact location details.' },
@@ -50,7 +47,6 @@ export const safetyLessons: SafetyLessonRecord[] = [
     title: 'Earthquake Safety',
     category: 'Emergency',
     duration: '10 min',
-    rewardPoints: 10,
     steps: [
       { id: 1, title: 'Prepare Before Quake', content: 'Secure heavy objects, prepare emergency kit, and agree family meeting points.' },
       { id: 2, title: 'Drop', content: 'Drop to hands and knees as soon as shaking starts to prevent fall injuries.' },
