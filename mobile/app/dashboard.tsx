@@ -250,6 +250,39 @@ export default function DashboardScreen() {
     setRemovingMemberId(null)
   }
 
+  const [isPredictingId, setIsPredictingId] = useState<string | null>(null)
+
+  const handlePredictLocation = async (member: any) => {
+    setIsPredictingId(member.id)
+    try {
+      const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://rescura.vercel.app'
+      const res = await fetch(`${baseUrl}/api/ai/predict-location`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: member.id })
+      })
+      const data = await res.json()
+      
+      if (!res.ok || data.error) {
+        Alert.alert('Prediction Failed', data.message || 'Not enough location history to predict trajectory.')
+        return
+      }
+
+      setSelectedLocation({
+        name: `${member.name} (Predicted)`,
+        lat: data.prediction.lat,
+        lng: data.prediction.lng,
+        address: `AI Prediction (Confidence: ${Math.round(data.prediction.confidence * 100)}%)\nReason: ${data.prediction.reason}`
+      })
+      setMapModalOpen(true)
+    } catch (err) {
+      console.error('predict error', err)
+      Alert.alert('Error', 'Failed to connect to prediction AI.')
+    } finally {
+      setIsPredictingId(null)
+    }
+  }
+
   const handleSendSafetyCheck = async (memberId: string) => {
     if (!user) return
     setSendingSafetyCheckId(memberId)
@@ -391,20 +424,34 @@ export default function DashboardScreen() {
                         </TouchableOpacity>
                         
                         {lastSeenMap[member.id]?.lat && (
-                          <TouchableOpacity 
-                            style={styles.mapActionBtn}
-                            onPress={() => {
-                              setSelectedLocation({
-                                name: member.name,
-                                lat: lastSeenMap[member.id].lat,
-                                lng: lastSeenMap[member.id].lng,
-                                address: lastSeenMap[member.id].address
-                              })
-                              setMapModalOpen(true)
-                            }}
-                          >
-                            <Ionicons name="navigate" size={18} color={theme.colors.primary} />
-                          </TouchableOpacity>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity 
+                              style={[styles.mapActionBtn, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}
+                              onPress={() => handlePredictLocation(member)}
+                              disabled={isPredictingId === member.id}
+                            >
+                              {isPredictingId === member.id ? (
+                                <ActivityIndicator size="small" color={theme.colors.primary} />
+                              ) : (
+                                <Ionicons name="sparkles" size={18} color={theme.colors.primary} />
+                              )}
+                            </TouchableOpacity>
+
+                            <TouchableOpacity 
+                              style={styles.mapActionBtn}
+                              onPress={() => {
+                                setSelectedLocation({
+                                  name: member.name,
+                                  lat: lastSeenMap[member.id].lat,
+                                  lng: lastSeenMap[member.id].lng,
+                                  address: lastSeenMap[member.id].address
+                                })
+                                setMapModalOpen(true)
+                              }}
+                            >
+                              <Ionicons name="navigate" size={18} color={theme.colors.primary} />
+                            </TouchableOpacity>
+                          </View>
                         )}
                       </View>
                     ) : (
