@@ -14,15 +14,6 @@
       "android": {
         "buildType": "apk"
       },
-      "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://jhwfjntomkgfjnnefhxf.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_7ROl5BbJyKoRBQqB9r4CRQ_yW6eFX76",
-        "EXPO_PUBLIC_API_BASE_URL": "https://rescura.vercel.app",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiZWlteWF0bW9uIiwiYSI6ImNtaHM3c2JtODBxbHMycnI4dTljeTBhOGMifQ.hvR26kiNlnorTCJ1hdN5nQ",
-        "EXPO_PUBLIC_ABLY_KEY": "rmze0w.kw2hjg:849vUBXcbHnggg0kmjPH6947ZlA8Mm3amUdxdtYaA9Y",
-        "EXPO_PUBLIC_ABLY_CHANNEL": "linyone-main-channel",
-        "EXPO_PUBLIC_GEMINI_MODEL": "gemini-2.5-flash"
-      },
       "channel": "preview"
     },
     "production": {
