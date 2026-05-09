@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { 
+import {
   UserPlus,
   Eye,
   EyeOff,
@@ -18,10 +18,10 @@ import {
 } from 'lucide-react'
 import { useLanguage } from '@/hooks/use-language'
 import { useAuth } from '@/hooks/use-auth'
-import { 
-  validateEmail, 
-  validatePhone, 
-  validatePassword, 
+import {
+  validateEmail,
+  validatePhone,
+  validatePassword,
   validateName,
   validateAddress,
   validatePasswordMatch,
@@ -45,7 +45,7 @@ export default function RegisterPage() {
   const { t } = useLanguage()
   const { register, isLoading } = useAuth()
   const router = useRouter()
-  
+
   const [registerForm, setRegisterForm] = useState<RegisterFormState>({
     accountType: 'user',
     name: '',
@@ -151,7 +151,7 @@ export default function RegisterPage() {
     e.preventDefault()
     setError('')
     setFieldErrors({})
-    
+
     // Validate all fields
     let isValid = true
     isValid = validateNameField(registerForm.name) && isValid
@@ -159,11 +159,11 @@ export default function RegisterPage() {
     isValid = validatePhoneField(registerForm.phone) && isValid
     isValid = validatePasswordField(registerForm.password) && isValid
     isValid = validateConfirmPasswordField(registerForm.confirmPassword) && isValid
-    
+
     if (registerForm.accountType === 'organization') {
       isValid = validateAddressField(registerForm.address) && isValid
     }
-    
+
     if (!registerForm.agreeToTerms) {
       setError('Please agree to the terms and conditions')
       isValid = false
@@ -173,7 +173,7 @@ export default function RegisterPage() {
       setError('Please fix all errors below')
       return
     }
-    
+
     const result = await register({
       accountType: registerForm.accountType,
       name: registerForm.name,
@@ -182,7 +182,7 @@ export default function RegisterPage() {
       password: registerForm.password,
       address: registerForm.accountType === 'organization' ? registerForm.address : undefined
     })
-    
+
     if (result.success) {
       router.push('/')
     } else {
@@ -236,12 +236,12 @@ export default function RegisterPage() {
     const hasPassword = registerForm.password.trim() !== ''
     const hasConfirmPassword = registerForm.confirmPassword.trim() !== ''
     const noErrors = Object.keys(fieldErrors).length === 0
-    
+
     if (registerForm.accountType === 'organization') {
       const hasAddress = registerForm.address.trim() !== ''
       return hasName && hasEmail && hasPhone && hasPassword && hasConfirmPassword && hasAddress && registerForm.agreeToTerms && noErrors
     }
-    
+
     return hasName && hasEmail && hasPhone && hasPassword && hasConfirmPassword && registerForm.agreeToTerms && noErrors
   }, [registerForm, fieldErrors])
 
@@ -251,10 +251,10 @@ export default function RegisterPage() {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <img 
-              src="/rescura-logo.svg" 
-              alt="Rescura" 
-              className="h-16 w-auto"
+            <img
+              src="/rescura-logo.png"
+              alt="Rescura"
+              className="h-16 w-auto [clip-path:polygon(50%_0%,_100%_20%,_100%_75%,_50%_100%,_0%_75%,_0%_20%)]"
             />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Rescura</h1>
@@ -272,7 +272,7 @@ export default function RegisterPage() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              
+
               <div className="flex flex-col gap-2">
                 <ToggleGroup
                   type="single"
@@ -316,7 +316,7 @@ export default function RegisterPage() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="email" className={fieldErrors.email ? 'text-red-500' : ''}>
                     {t('auth.email')} *
@@ -340,7 +340,7 @@ export default function RegisterPage() {
                   )}
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone" className={fieldErrors.phone ? 'text-red-500' : ''}>
@@ -394,9 +394,9 @@ export default function RegisterPage() {
                   )}
                 </div>
               )}
-              
+
               {/* Removed role-based organization selection */}
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="password" className={fieldErrors.password ? 'text-red-500' : ''}>
@@ -435,7 +435,7 @@ export default function RegisterPage() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword" className={fieldErrors.confirmPassword ? 'text-red-500' : ''}>
                     Confirm Password *
@@ -474,7 +474,7 @@ export default function RegisterPage() {
                   )}
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="terms"
@@ -485,7 +485,7 @@ export default function RegisterPage() {
                   I agree to the terms and conditions and privacy policy
                 </Label>
               </div>
-              
+
               <Button type="submit" className="w-full" disabled={isLoading || !isFormValid}>
                 {isLoading ? (
                   <div className="flex items-center gap-2">
@@ -500,7 +500,7 @@ export default function RegisterPage() {
                 )}
               </Button>
             </form>
-            
+
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 {t('auth.alreadyHaveAccount')}{' '}

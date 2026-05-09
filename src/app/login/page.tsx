@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { 
+import {
   LogIn,
   Eye,
   EyeOff,
@@ -24,7 +24,7 @@ export default function LoginPage() {
   const { t } = useLanguage()
   const { login, isLoading } = useAuth()
   const router = useRouter()
-  
+
   type AccountType = 'user' | 'organization'
   const [loginForm, setLoginForm] = useState({
     accountType: 'user' as AccountType,
@@ -69,7 +69,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setFieldErrors({})
-    
+
     // Validate all fields
     let isValid = true
     isValid = validateEmailField(loginForm.email) && isValid
@@ -79,9 +79,9 @@ export default function LoginPage() {
       setError('Please fix the errors below')
       return
     }
-    
+
     const result = await login(loginForm.email, loginForm.password, loginForm.accountType)
-    
+
     if (result.success) {
       router.push('/')
     } else {
@@ -132,11 +132,11 @@ export default function LoginPage() {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <img 
-              src="/rescura-logo.svg" 
-              alt="Rescura" 
-              className="h-16 w-auto"
-            />
+              <img
+                src="/rescura-logo.png"
+                alt="Rescura"
+                className="h-16 w-auto [clip-path:polygon(50%_0%,_100%_20%,_100%_75%,_50%_100%,_0%_75%,_0%_20%)]"
+              />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Rescura</h1>
           <p className="text-gray-600">{t('auth.login')}</p>
@@ -153,7 +153,7 @@ export default function LoginPage() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              
+
               <div className="flex flex-col gap-2">
                 <ToggleGroup
                   type="single"
@@ -173,7 +173,7 @@ export default function LoginPage() {
                   </ToggleGroupItem>
                 </ToggleGroup>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="email" className={fieldErrors.email ? 'text-red-500' : ''}>
                   {t('auth.email')} *
@@ -196,7 +196,7 @@ export default function LoginPage() {
                   </div>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="password" className={fieldErrors.password ? 'text-red-500' : ''}>
                   {t('auth.password')} *
@@ -234,7 +234,7 @@ export default function LoginPage() {
                   </div>
                 )}
               </div>
-              
+
               <Button type="submit" className="w-full" disabled={isLoading || !isFormValid}>
                 {isLoading ? (
                   <div className="flex items-center gap-2">
@@ -249,7 +249,7 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-            
+
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 {t('auth.dontHaveAccount')}{' '}
