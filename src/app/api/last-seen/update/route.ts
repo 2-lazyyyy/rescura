@@ -55,6 +55,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'db_error' }, { status: 500 })
     }
 
+    // Insert into location_history for AI Trajectory Prediction
+    const { error: historyError } = await supabase
+      .from('location_history')
+      .insert({ user_id: userId, lat, lng })
+      
+    if (historyError) {
+      console.warn('[last-seen] history insert error', historyError)
+      // We don't fail the request if history insertion fails
+    }
+
     return NextResponse.json({ ok: true, address })
   } catch (err: any) {
     console.error('[last-seen] error', err)

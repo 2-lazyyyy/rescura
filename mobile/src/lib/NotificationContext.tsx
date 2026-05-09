@@ -28,7 +28,7 @@ export function NotificationProvider({ children }: PropsWithChildren) {
       setNotifications(filtered)
       
       const [notiCount, msgCount] = await Promise.all([
-        fetchNotiCount(user.id),
+        fetchNotiCount(user.id, { isOrg: user.isOrg }),
         fetchMsgCount(user.id)
       ])
       setUnreadCount(notiCount + msgCount)

@@ -29,7 +29,8 @@ import {
   Activity,
   Briefcase,
   User,
-  ShieldCheck
+  ShieldCheck,
+  BellOff
 } from 'lucide-react'
 import { useLanguage } from '@/hooks/use-language'
 import { useAuth } from '@/hooks/use-auth'
@@ -66,6 +67,22 @@ export function Navigation() {
   const [deletedRequestIds, setDeletedRequestIds] = useState<Set<string>>(new Set())
   // Track accepted requests to show "You have accepted the request" message
   const [acceptedRequests, setAcceptedRequests] = useState<Map<string, any>>(new Map())
+  const [isMuted, setIsMuted] = useState(false)
+
+  useEffect(() => {
+    try {
+      setIsMuted(localStorage.getItem('ly_disaster_alerts_muted') === 'true')
+    } catch {}
+  }, [])
+
+  const toggleMute = () => {
+    try {
+      const newVal = !isMuted
+      setIsMuted(newVal)
+      localStorage.setItem('ly_disaster_alerts_muted', String(newVal))
+      window.dispatchEvent(new CustomEvent('disaster-mute-change', { detail: { muted: newVal } }))
+    } catch {}
+  }
 
   const userLabel = user?.role ?? (user?.isAdmin ? 'admin' : user?.accountType)
   const notificationRecipientType = user?.isOrg ? 'organization' as const : 'user' as const
@@ -1303,6 +1320,17 @@ export function Navigation() {
 
             {/* Right side items */}
             <div className="hidden md:flex items-center space-x-4">
+              {/* Disaster Alert Mute Toggle */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleMute}
+                className="flex items-center space-x-1"
+                title={isMuted ? "Unmute Disaster Alerts" : "Mute Disaster Alerts"}
+              >
+                {isMuted ? <BellOff className="w-4 h-4 text-gray-400" /> : <AlertTriangle className="w-4 h-4 text-amber-500" />}
+              </Button>
+
               {/* Language Toggle */}
               <Button
                 variant="ghost"
@@ -1697,6 +1725,17 @@ export function Navigation() {
 
             {/* Mobile menu button and notification */}
             <div className="md:hidden flex items-center gap-2">
+              {/* Disaster Alert Mute Toggle (Mobile) */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleMute}
+                className="relative p-2"
+                title={isMuted ? "Unmute Disaster Alerts" : "Mute Disaster Alerts"}
+              >
+                {isMuted ? <BellOff className="w-5 h-5 text-gray-400" /> : <AlertTriangle className="w-5 h-5 text-amber-500" />}
+              </Button>
+
               {/* Mobile Notifications - only when authenticated */}
               {isAuthenticated && (
                 <DropdownMenu>

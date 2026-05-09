@@ -143,25 +143,22 @@ export async function createNotification(params: {
 }
 
 export async function getNotifications(recipientId: string, options?: NotificationQueryOptions) {
+  const { data: userData, error: userError } = await fetchNotificationsByColumn('user_id', recipientId)
+  
+  if (userError) {
+    console.error('getNotifications user_id error', userError)
+  }
+
+  const allNotifications = userData || []
+
   if (options?.recipientType === 'organization') {
     const fallbackResult = await fetchOrganizationPayloadNotifications(recipientId)
-
-    if (fallbackResult.error) {
-      logNotificationError('getNotifications payload fallback error', fallbackResult.error)
-      return [] as NotificationRecord[]
+    if (!fallbackResult.error && fallbackResult.data) {
+      allNotifications.push(...fallbackResult.data)
     }
-
-    return dedupeNotifications(fallbackResult.data)
   }
 
-  const { data, error } = await fetchNotificationsByColumn('user_id', recipientId)
-
-  if (error) {
-    console.error('getNotifications error', error)
-    return [] as NotificationRecord[]
-  }
-
-  return data
+  return dedupeNotifications(allNotifications)
 }
 
 export function subscribeToNotifications(
@@ -186,75 +183,81 @@ export function subscribeToNotifications(
     return Math.random().toString(36).slice(2)
   })()
   const channelName = options?.channelId ?? `notifications:${recipientId}:${uniqueSuffix}`
-  const channels = options?.recipientType === 'organization'
-    ? [
-        supabase
-          .channel(`${channelName}:organization`)
-          .on('postgres_changes', {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-          }, (payload) => {
-            const notification = payload.new as NotificationRecord
-            if (matchesOrganizationNotification(notification, recipientId)) {
-              cb(notification)
-            }
-          })
-          .on('postgres_changes', {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'notifications',
-          }, (payload) => {
-            const notification = payload.old as NotificationRecord
-            if (options?.onDelete && matchesOrganizationNotification(notification, recipientId)) {
-              options.onDelete(notification.id)
-            }
-          })
-          .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'notifications',
-          }, (payload) => {
-            const notification = payload.new as NotificationRecord
-            if (options?.onUpdate && matchesOrganizationNotification(notification, recipientId)) {
-              options.onUpdate(notification)
-            }
-          })
-          .subscribe()
-      ]
-    : [
-        supabase
-          .channel(`${channelName}:user_id`)
-          .on('postgres_changes', {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${recipientId}`
-          }, (payload) => {
-            cb(payload.new as NotificationRecord)
-          })
-          .on('postgres_changes', {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${recipientId}`
-          }, (payload) => {
-            if (options?.onDelete) {
-              options.onDelete(payload.old.id)
-            }
-          })
-          .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${recipientId}`
-          }, (payload) => {
-            if (options?.onUpdate) {
-              options.onUpdate(payload.new as NotificationRecord)
-            }
-          })
-          .subscribe()
-      ]
+  const channels: any[] = []
+
+  // ALWAYS subscribe to user_id notifications
+  channels.push(
+    supabase
+      .channel(`${channelName}:user_id`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${recipientId}`
+      }, (payload) => {
+        cb(payload.new as NotificationRecord)
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${recipientId}`
+      }, (payload) => {
+        if (options?.onDelete) {
+          options.onDelete(payload.old.id)
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${recipientId}`
+      }, (payload) => {
+        if (options?.onUpdate) {
+          options.onUpdate(payload.new as NotificationRecord)
+        }
+      })
+      .subscribe()
+  )
+
+  // IF organization, ALSO subscribe to organization notifications
+  if (options?.recipientType === 'organization') {
+    channels.push(
+      supabase
+        .channel(`${channelName}:organization`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+        }, (payload) => {
+          const notification = payload.new as NotificationRecord
+          if (matchesOrganizationNotification(notification, recipientId)) {
+            cb(notification)
+          }
+        })
+        .on('postgres_changes', {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'notifications',
+        }, (payload) => {
+          const notification = payload.old as NotificationRecord
+          if (options?.onDelete && matchesOrganizationNotification(notification, recipientId)) {
+            options.onDelete(notification.id)
+          }
+        })
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+        }, (payload) => {
+          const notification = payload.new as NotificationRecord
+          if (options?.onUpdate && matchesOrganizationNotification(notification, recipientId)) {
+            options.onUpdate(notification)
+          }
+        })
+        .subscribe()
+    )
+  }
 
   return {
     unsubscribe: () => {
@@ -430,14 +433,29 @@ export async function deleteNotificationsByRequestId(userId: string, requestId: 
   }
 }
 
-export async function fetchUnreadCount(userId: string) {
-  const { count, error } = await supabase
+export async function fetchUnreadCount(userId: string, options?: { isOrg?: boolean }) {
+  const { count: userCount, error: userError } = await supabase
     .from('notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('read', false)
     .neq('type', 'alert') // Disaster alerts don't count for the inbox badge
 
-  if (error) throw error
-  return count ?? 0
+  if (userError) throw userError
+  let totalCount = userCount ?? 0
+
+  if (options?.isOrg) {
+    const { count: orgCount, error: orgError } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .contains('payload', { organization_id: userId, recipient_type: 'organization' })
+      .eq('read', false)
+      .neq('type', 'alert')
+
+    if (!orgError && orgCount) {
+      totalCount += orgCount
+    }
+  }
+
+  return totalCount
 }

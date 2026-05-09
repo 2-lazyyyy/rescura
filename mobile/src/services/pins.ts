@@ -37,6 +37,8 @@ export async function fetchItems() {
   return { success: true, items: data || [] }
 }
 
+import { createNotification } from './notifications'
+
 export async function createPin(input: {
   type: 'damaged' | 'safe'
   phone?: string
@@ -71,7 +73,43 @@ export async function createPin(input: {
     .maybeSingle()
 
   if (error || !data) return { success: false, error: error?.message || 'Failed to create pin' }
-  return { success: true, pin: mapPin(data) }
+  
+  const mappedPin = mapPin(data)
+
+  // Notify all active volunteers
+  try {
+    const { data: volunteers } = await supabase
+      .from('org-member')
+      .select('user_id')
+      .eq('status', 'active')
+
+    if (volunteers && volunteers.length > 0) {
+      for (const vol of volunteers) {
+        // Skip notifying the person who created the pin
+        if (vol.user_id === input.userId) continue;
+
+        await createNotification({
+          userId: vol.user_id,
+          type: 'pin',
+          title: input.type === 'damaged' ? 'Damaged Location Reported' : 'Safe Zone Reported',
+          body: input.description ? (input.description.length > 140 ? input.description.slice(0, 137) + '...' : input.description) : (input.type === 'damaged' ? 'A damage report was created nearby.' : 'A new safe shelter was reported.'),
+          payload: { 
+            pin_id: mappedPin.id, 
+            type: mappedPin.type,
+            status: mappedPin.status,
+            lat: input.latitude, 
+            lng: input.longitude,
+            description: input.description,
+            phone: input.phone
+          }
+        })
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to notify volunteers of new pin', err)
+  }
+
+  return { success: true, pin: mappedPin }
 }
 
 export async function updatePinImageUrl(pinId: string, imageUrl: string) {

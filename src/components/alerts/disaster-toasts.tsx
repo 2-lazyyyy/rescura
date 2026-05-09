@@ -44,9 +44,24 @@ export function DisasterToasts() {
   const seenRef = useRef<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
   const [curr, setCurr] = useState<IncomingAlert | null>(null)
+  const [isMuted, setIsMuted] = useState(false)
   const STORAGE_KEY = 'ly_seen_alert_ids_v1'
+  const MUTE_KEY = 'ly_disaster_alerts_muted'
   const MAX_ENTRIES = 500
   const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+  useEffect(() => {
+    try {
+      setIsMuted(localStorage.getItem(MUTE_KEY) === 'true')
+    } catch {}
+
+    const handleMuteChange = (e: any) => {
+      setIsMuted(e.detail?.muted === true)
+    }
+
+    window.addEventListener('disaster-mute-change', handleMuteChange)
+    return () => window.removeEventListener('disaster-mute-change', handleMuteChange)
+  }, [])
 
   function loadPersisted() {
     try {
@@ -112,8 +127,12 @@ export function DisasterToasts() {
           persistAdd(id)
           if (!data.type) return
           const t = normalizeTime((data as any).time)
-          setCurr({ ...data, time: t, severity: deriveSeverity(data) })
-          setOpen(true)
+          
+          // Only show popup if not muted
+          if (localStorage.getItem(MUTE_KEY) !== 'true') {
+            setCurr({ ...data, time: t, severity: deriveSeverity(data) })
+            setOpen(true)
+          }
         }
         channel.subscribe('earthquake', handler)
         channel.subscribe('flood', handler)
@@ -145,8 +164,12 @@ export function DisasterToasts() {
     persistAdd(id)
     const t = normalizeTime(ev.time)
     const enriched: IncomingAlert = { ...ev, id, time: t, severity: deriveSeverity({ ...ev, time: t }) }
-    setCurr(enriched)
-    setOpen(true)
+    
+    // Only show popup if not muted
+    if (localStorage.getItem(MUTE_KEY) !== 'true') {
+      setCurr(enriched)
+      setOpen(true)
+    }
     try {
       await fetch('/api/broadcast-alert', {
         method: 'POST',

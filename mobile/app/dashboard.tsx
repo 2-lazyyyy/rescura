@@ -360,7 +360,20 @@ export default function DashboardScreen() {
                       </View>
                       
                       <View style={styles.memberInfo}>
-                        <Text style={styles.memberName} numberOfLines={1}>{member.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.memberName} numberOfLines={1}>{member.name}</Text>
+                          {member.isLinked && lastSeenMap[member.id] && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <View style={{ 
+                                width: 8, height: 8, borderRadius: 4, 
+                                backgroundColor: new Date(lastSeenMap[member.id].last_seen_at).getTime() > Date.now() - 15 * 60000 ? '#10b981' : '#94a3b8' 
+                              }} />
+                              <Text style={{ fontSize: 10, color: '#64748b', fontWeight: '500' }}>
+                                {new Date(lastSeenMap[member.id].last_seen_at).getTime() > Date.now() - 15 * 60000 ? 'Online' : 'Offline'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={styles.memberRelation}>{member.relation || 'Family'}</Text>
                       </View>
 

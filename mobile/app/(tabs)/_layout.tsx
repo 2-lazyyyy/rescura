@@ -46,7 +46,6 @@ export default function TabsLayout() {
           backgroundColor: '#ffffff',
           borderTopWidth: 1,
           borderTopColor: '#f1f5f9',
-          // Professional standard height
           height: 50 + insets.bottom,
           paddingTop: 6,
           elevation: 8,
@@ -93,7 +92,7 @@ export default function TabsLayout() {
           }
         }} 
       />
-      <Tabs.Screen name="dashboard" options={{ title: 'Dashboard' }} />
+      <Tabs.Screen name="dashboard" options={{ title: 'Network' }} />
       <Tabs.Screen name="chat"      options={{ title: 'AI' }} />
       <Tabs.Screen name="profile"   options={{ title: 'Profile' }} />
       <Tabs.Screen name="messages"  options={{ href: null }} />
