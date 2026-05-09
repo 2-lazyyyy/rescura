@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native'
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -305,8 +306,11 @@ export default function AuthScreen() {
         </TouchableOpacity>
         {/* ===== Brand Header ===== */}
         <View style={styles.brandArea}>
-          <LinearGradient colors={[theme.colors.primary, '#7c3aed']} style={styles.logoWrap}>
-            <Ionicons name="shield-checkmark" size={36} color="#fff" />
+          <LinearGradient colors={[theme.colors.primary, '#000']} style={styles.logoWrap}>
+            <Image 
+              source={require('../assets/icon.png')} 
+              style={{ width: 48, height: 48, borderRadius: 12 }} 
+            />
           </LinearGradient>
           <Text style={styles.brandName}>Rescura</Text>
           <Text style={styles.brandTagline}>

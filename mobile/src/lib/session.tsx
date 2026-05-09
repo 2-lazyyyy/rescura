@@ -10,6 +10,7 @@ export type SessionUser = {
   phone?: string | null
   role?: UserRole
   organizationId?: string | null
+  image?: string | null
   accountType?: AccountType
   isAdmin?: boolean
   isOrg?: boolean
@@ -21,6 +22,7 @@ type SessionState = {
   login: (email: string, password: string, accountType: AccountType) => Promise<{ success: boolean; error?: string }>
   register: (input: { name: string; email: string; phone?: string; password: string; accountType: AccountType; address?: string }) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
 const LOCAL_USER_KEY = 'linyone_mobile_user'
@@ -89,12 +91,24 @@ export function SessionProvider({ children }: PropsWithChildren) {
     await AsyncStorage.removeItem(LOCAL_USER_KEY)
   }
 
+  const refreshSession = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(LOCAL_USER_KEY)
+      if (raw) {
+        setUser(JSON.parse(raw) as SessionUser)
+      }
+    } catch (err) {
+      console.error('Failed to refresh session', err)
+    }
+  }
+
   const value = useMemo<SessionState>(() => ({
     user,
     isHydrating,
     login,
     register,
     logout,
+    refreshSession,
   }), [user, isHydrating])
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  Image,
 } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -20,6 +21,10 @@ import { getUserOrgMember } from '../../src/services/pins'
 import { fetchOrganizationById } from '../../src/services/organizations'
 import { checkModelExists, downloadModel, deleteModel } from '../../src/services/offlineAi'
 import * as Updates from 'expo-updates'
+import * as ImagePicker from 'expo-image-picker'
+import { uploadProfileImage } from '../../src/services/storage'
+import { updateUserProfileImage } from '../../src/services/auth'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 // Types
 type ShortcutItem = {
@@ -43,7 +48,7 @@ const ROLE_SHORTCUTS: Record<string, ShortcutItem[]> = {
   user: [
     { label: 'Dashboard',      route: '/dashboard',      icon: 'grid-outline',           description: 'Family & safety overview' },
     { label: 'Safety Course',  route: '/safety',         icon: 'shield-checkmark-outline', description: 'Training modules' },
-    { label: 'Organizations',  route: '/organizations',  icon: 'business-outline',       description: 'Find organizations' },
+    { label: 'Organizations',  route: 'https://rescura.vercel.app/login',  icon: 'business-outline',       description: 'Find organizations' },
   ],
 }
 
@@ -73,7 +78,7 @@ const infoStyles = StyleSheet.create({
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets()
-  const { user, logout } = useSession()
+  const { user, logout, refreshSession } = useSession()
   const [supplyCount, setSupplyCount] = useState<number | null>(null)
   const [isVolunteer, setIsVolunteer] = useState(false)
   const [orgName, setOrgName] = useState<string | null>(null)
@@ -85,6 +90,7 @@ export default function ProfileScreen() {
 
   // OTA Updates State
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   const shortcuts = user?.role === 'admin'
     ? ROLE_SHORTCUTS.admin
@@ -208,6 +214,48 @@ export default function ProfileScreen() {
     router.replace('/auth')
   }
 
+  const handlePickImage = async () => {
+    if (!user) return
+    
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'We need camera roll permissions to upload a profile picture.')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      setIsUploading(true)
+      try {
+        const uploadRes = await uploadProfileImage(result.assets[0].uri, user.id)
+        if (uploadRes.success && uploadRes.publicUrl) {
+          const dbRes = await updateUserProfileImage(user.id, uploadRes.publicUrl, user.isOrg || false)
+          if (dbRes.success) {
+            // Update local session
+            const updatedUser = { ...user, image: uploadRes.publicUrl }
+            await AsyncStorage.setItem('linyone_mobile_user', JSON.stringify(updatedUser))
+            Alert.alert('Success', 'Profile picture updated!')
+            await refreshSession()
+          } else {
+            Alert.alert('Error', dbRes.error || 'Failed to update profile')
+          }
+        } else {
+          Alert.alert('Error', uploadRes.error || 'Failed to upload image')
+        }
+      } catch (err) {
+        Alert.alert('Error', 'An unexpected error occurred')
+      } finally {
+        setIsUploading(false)
+      }
+    }
+  }
+
   const initials = (user?.name || 'U')
     .split(' ')
     .map((n: string) => n[0])
@@ -235,11 +283,31 @@ export default function ProfileScreen() {
           colors={[theme.colors.primary + '22', theme.colors.primary + '08']}
           style={[styles.hero, { paddingTop: insets.top + 20 }]}
         >
-          <View style={styles.avatarRing}>
+          <TouchableOpacity 
+            style={styles.avatarRing} 
+            onPress={handlePickImage}
+            disabled={isUploading}
+          >
             <LinearGradient colors={[theme.colors.primary, '#7c3aed']} style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
+              {isUploading ? (
+                <ActivityIndicator color="#fff" />
+              ) : user?.image ? (
+                <View style={{ width: '100%', height: '100%', borderRadius: 45, overflow: 'hidden' }}>
+                  <View style={{ flex: 1, backgroundColor: '#f1f5f9' }}>
+                    <Image 
+                      source={{ uri: user.image }} 
+                      style={{ width: '100%', height: '100%' }} 
+                    />
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
             </LinearGradient>
-          </View>
+            <View style={styles.editBadge}>
+              <Ionicons name="camera" size={12} color="#fff" />
+            </View>
+          </TouchableOpacity>
           <View style={styles.heroText}>
             <Text style={styles.heroName}>{user?.name || 'Anonymous user'}</Text>
             <Text style={styles.heroEmail}>{user?.email || ''}</Text>
@@ -442,4 +510,22 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   logoutBtnText: { color: '#dc2626', fontWeight: '800', fontSize: 16 },
+  editBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: theme.colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  }
 })

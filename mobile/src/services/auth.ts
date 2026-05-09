@@ -79,3 +79,14 @@ export async function getSessionUser(token?: string): Promise<{ success: boolean
   // Not used in plaintext auth since session is stored directly in AsyncStorage
   return { success: false }
 }
+
+export async function updateUserProfileImage(userId: string, imageUrl: string, isOrg: boolean) {
+  const table = isOrg ? 'organizations' : 'users'
+  const { error } = await supabase
+    .from(table)
+    .update({ image: imageUrl })
+    .eq('id', userId)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}

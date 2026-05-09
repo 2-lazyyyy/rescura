@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { ActivityIndicator, Alert, LogBox, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, PanResponder, Platform, KeyboardAvoidingView } from 'react-native'
+import { ActivityIndicator, Alert, LogBox, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, PanResponder, Platform, KeyboardAvoidingView, Image } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -599,21 +599,28 @@ export default function DashboardScreen() {
         {/* PREMIUM DASHBOARD HEADER */}
         <View style={headerStyles.container}>
           <View style={headerStyles.topRow}>
-            <View style={headerStyles.profileSection}>
+            <TouchableOpacity 
+              style={headerStyles.profileSection}
+              onPress={() => router.push('/(tabs)/profile')}
+              activeOpacity={0.7}
+            >
               <View style={headerStyles.avatar}>
-                <Text style={headerStyles.avatarText}>{user?.email?.charAt(0).toUpperCase() || 'U'}</Text>
+                <View style={{ width: '100%', height: '100%', borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                  {user?.image ? (
+                    <Image 
+                      source={{ uri: user.image }} 
+                      style={{ width: '100%', height: '100%' }} 
+                    />
+                  ) : (
+                    <Text style={headerStyles.avatarText}>{user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}</Text>
+                  )}
+                </View>
                 <View style={headerStyles.activeDot} />
               </View>
               <View>
                 <Text style={headerStyles.greeting}>Welcome back,</Text>
-                <Text style={headerStyles.userName}>{user?.email?.split('@')[0] || 'User'}</Text>
+                <Text style={headerStyles.userName}>{user?.name || user?.email?.split('@')[0] || 'User'}</Text>
               </View>
-            </View>
-            <TouchableOpacity
-              style={headerStyles.iconButton}
-              onPress={() => router.push('/(tabs)/profile')}
-            >
-              <Ionicons name="person-circle-outline" size={28} color={theme.colors.foreground} />
             </TouchableOpacity>
           </View>
 
@@ -688,7 +695,11 @@ export default function DashboardScreen() {
 
       {/* Add Member Modal */}
       <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
+        >
           <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPressOut={() => setShowAddModal(false)}>
             <TouchableOpacity activeOpacity={1} style={styles.modalContainer}>
               <View {...addModalPanResponder.panHandlers} style={{ paddingBottom: 10 }}>
@@ -705,123 +716,130 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.searchInputContainer}>
-              <Ionicons name="search" size={20} color="#94a3b8" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by phone, email or name..."
-                placeholderTextColor="#94a3b8"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCapitalize="none"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClearBtn}>
-                  <Ionicons name="close-circle" size={16} color="#cbd5e1" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {isSearching && (
-              <View style={styles.searchingState}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-                <Text style={styles.searchingText}>Searching...</Text>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search" size={20} color="#94a3b8" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search by phone, email or name..."
+                  placeholderTextColor="#94a3b8"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="none"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClearBtn}>
+                    <Ionicons name="close-circle" size={16} color="#cbd5e1" />
+                  </TouchableOpacity>
+                )}
               </View>
-            )}
 
-            {searchResults.length > 0 && !selectedUser && (
-              <ScrollView style={styles.searchResults} showsVerticalScrollIndicator={false}>
-                {searchResults.map((u, idx) => {
-                  const isFamily = familyMembers.some(m => m.id === u.id)
-                  const isSent = sentRequests.some(r => r.to_user_id === u.id)
-                  
-                  return (
+              {isSearching && (
+                <View style={styles.searchingState}>
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                  <Text style={styles.searchingText}>Searching...</Text>
+                </View>
+              )}
+
+              {searchResults.length > 0 && !selectedUser && (
+                <View style={styles.searchResults}>
+                  {searchResults.map((u, idx) => {
+                    const isFamily = familyMembers.some(m => m.id === u.id)
+                    const isSent = sentRequests.some(r => r.to_user_id === u.id)
+                    
+                    return (
+                      <TouchableOpacity 
+                        key={u.id} 
+                        style={[styles.searchItem, idx === searchResults.length - 1 && { borderBottomWidth: 0 }]} 
+                        onPress={() => {
+                          if (!isFamily && !isSent) {
+                            setSelectedUser(u)
+                          }
+                        }}
+                        activeOpacity={isFamily || isSent ? 1 : 0.7}
+                      >
+                        <View style={styles.searchAvatar}>
+                          <Text style={styles.searchAvatarText}>{u.name?.charAt(0) || 'U'}</Text>
+                        </View>
+                        <View style={styles.searchItemInfo}>
+                          <Text style={styles.searchName}>{u.name}</Text>
+                          <Text style={styles.searchPhone}>{u.phone || u.email}</Text>
+                        </View>
+                        {isFamily ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                            <Text style={{ fontSize: 12, color: '#10b981', fontWeight: '600' }}>Family</Text>
+                          </View>
+                        ) : isSent ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Ionicons name="time" size={20} color="#f59e0b" />
+                            <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: '600' }}>Pending</Text>
+                          </View>
+                        ) : (
+                          <Ionicons name="person-add-outline" size={20} color={theme.colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              )}
+
+              {selectedUser && (
+                <View style={styles.selectedUserCard}>
+                  <View style={styles.selectedUserHeader}>
+                    <View style={styles.selectedUserAvatar}>
+                      <Text style={styles.selectedUserAvatarText}>{selectedUser.name?.charAt(0) || 'U'}</Text>
+                    </View>
+                    <View style={styles.selectedUserInfo}>
+                      <Text style={styles.selectedUserName}>{selectedUser.name}</Text>
+                      <Text style={styles.selectedUserContact}>{selectedUser.phone || selectedUser.email}</Text>
+                    </View>
+                    <View style={styles.checkIconWrap}>
+                      <Ionicons name="checkmark" size={14} color="#fff" />
+                    </View>
+                  </View>
+
+                  <View style={styles.relationInputWrap}>
+                    <Text style={styles.inputLabel}>How are you related?</Text>
+                    <TextInput
+                      style={styles.relationInput}
+                      placeholder="e.g. Mother, Son, Partner"
+                      placeholderTextColor="#94a3b8"
+                      value={relation}
+                      onChangeText={setRelation}
+                      returnKeyType="done"
+                    />
+                  </View>
+
+                  <View style={styles.modalActionRow}>
                     <TouchableOpacity 
-                      key={u.id} 
-                      style={[styles.searchItem, idx === searchResults.length - 1 && { borderBottomWidth: 0 }]} 
-                      onPress={() => {
-                        if (!isFamily && !isSent) {
-                          setSelectedUser(u)
-                        }
-                      }}
-                      activeOpacity={isFamily || isSent ? 1 : 0.7}
+                      style={styles.modalCancelBtn} 
+                      onPress={() => setSelectedUser(null)}
                     >
-                      <View style={styles.searchAvatar}>
-                        <Text style={styles.searchAvatarText}>{u.name?.charAt(0) || 'U'}</Text>
-                      </View>
-                      <View style={styles.searchItemInfo}>
-                        <Text style={styles.searchName}>{u.name}</Text>
-                        <Text style={styles.searchPhone}>{u.phone || u.email}</Text>
-                      </View>
-                      {isFamily ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                          <Text style={{ fontSize: 12, color: '#10b981', fontWeight: '600' }}>Family</Text>
-                        </View>
-                      ) : isSent ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Ionicons name="time" size={20} color="#f59e0b" />
-                          <Text style={{ fontSize: 12, color: '#f59e0b', fontWeight: '600' }}>Pending</Text>
-                        </View>
+                      <Text style={styles.modalCancelBtnText}>Back</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.modalSubmitBtn, (!relation || isSending) && styles.modalSubmitBtnDisabled]} 
+                      onPress={handleSendRequest} 
+                      disabled={isSending || !relation}
+                    >
+                      {isSending ? (
+                        <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Ionicons name="person-add-outline" size={20} color={theme.colors.primary} />
+                        <>
+                          <Ionicons name="send" size={16} color="#fff" />
+                          <Text style={styles.modalSubmitBtnText}>Send Request</Text>
+                        </>
                       )}
                     </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-            )}
-
-            {selectedUser && (
-              <View style={styles.selectedUserCard}>
-                <View style={styles.selectedUserHeader}>
-                  <View style={styles.selectedUserAvatar}>
-                    <Text style={styles.selectedUserAvatarText}>{selectedUser.name?.charAt(0) || 'U'}</Text>
-                  </View>
-                  <View style={styles.selectedUserInfo}>
-                    <Text style={styles.selectedUserName}>{selectedUser.name}</Text>
-                    <Text style={styles.selectedUserContact}>{selectedUser.phone || selectedUser.email}</Text>
-                  </View>
-                  <View style={styles.checkIconWrap}>
-                    <Ionicons name="checkmark" size={14} color="#fff" />
                   </View>
                 </View>
-
-                <View style={styles.relationInputWrap}>
-                  <Text style={styles.inputLabel}>How are you related?</Text>
-                  <TextInput
-                    style={styles.relationInput}
-                    placeholder="e.g. Mother, Son, Partner"
-                    placeholderTextColor="#94a3b8"
-                    value={relation}
-                    onChangeText={setRelation}
-                  />
-                </View>
-
-                <View style={styles.modalActionRow}>
-                  <TouchableOpacity 
-                    style={styles.modalCancelBtn} 
-                    onPress={() => setSelectedUser(null)}
-                  >
-                    <Text style={styles.modalCancelBtnText}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.modalSubmitBtn, (!relation || isSending) && styles.modalSubmitBtnDisabled]} 
-                    onPress={handleSendRequest} 
-                    disabled={isSending || !relation}
-                  >
-                    {isSending ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <>
-                        <Ionicons name="send" size={16} color="#fff" />
-                        <Text style={styles.modalSubmitBtnText}>Send Request</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
+              )}
+            </ScrollView>
             </TouchableOpacity>
           </TouchableOpacity>
         </KeyboardAvoidingView>
@@ -1151,7 +1169,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32, 
     padding: 24, 
     paddingBottom: 40,
-    height: '60%',
+    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,

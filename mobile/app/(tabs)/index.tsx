@@ -225,7 +225,19 @@ export default function HomeScreen() {
   // ---- Derived ----
   const pendingPins = pins.filter((p) => p.status === 'pending')
   const pendingCount = pendingPins.length
-  const displayedPins = isFilteringPending ? pendingPins : pins
+  const sortedPins = useMemo(() => {
+    return [...pins].sort((a, b) => 
+      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    )
+  }, [pins])
+  
+  const displayedPins = useMemo(() => {
+    const list = isFilteringPending ? pendingPins : sortedPins
+    // If it's already filtered, it might need another sort if pendingPins wasn't sorted
+    return [...list].sort((a, b) => 
+      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    )
+  }, [isFilteringPending, pendingPins, sortedPins])
 
   return (
     <View style={styles.screen}>
@@ -253,7 +265,11 @@ export default function HomeScreen() {
           style={styles.floatingHeaderInner}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
-            <Image source={require('../../assets/icon.png')} style={{ width: 32, height: 32, borderRadius: 8 }} />
+            {user?.image ? (
+              <Image source={{ uri: user.image }} style={{ width: 32, height: 32, borderRadius: 8 }} />
+            ) : (
+              <Image source={require('../../assets/icon.png')} style={{ width: 32, height: 32, borderRadius: 8 }} />
+            )}
             <Text style={styles.floatingGreeting} numberOfLines={1}>
               {user ? `Hi, ${user.name?.split(' ')[0]} 👋` : 'Rescura'}
             </Text>
@@ -481,8 +497,20 @@ export default function HomeScreen() {
                       {pin.type === 'damaged' ? 'Help Request' : 'Safe Location'}
                     </Text>
                   </View>
-                  <View style={[styles.statusBadge, pin.status === 'confirmed' ? styles.statusConfirmed : styles.statusPending]}>
-                    <Text style={styles.statusText}>{pin.status}</Text>
+                  <View style={[
+                    styles.statusBadge, 
+                    pin.status === 'confirmed' ? styles.statusConfirmed : 
+                    pin.status === 'completed' ? styles.statusCompleted : 
+                    styles.statusPending
+                  ]}>
+                    <Text style={[
+                      styles.statusText,
+                      { color: pin.status === 'confirmed' ? '#059669' : 
+                               pin.status === 'completed' ? '#1e40af' : 
+                               '#d97706' }
+                    ]}>
+                      {pin.status}
+                    </Text>
                   </View>
                 </View>
 
@@ -492,9 +520,19 @@ export default function HomeScreen() {
                 </Text>
 
                 {/* Footer row */}
-                <Text style={styles.pinMeta}>
-                  {(pin.items || []).length} items attached
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                  <Text style={styles.pinMeta}>
+                    {(pin.items || []).length} items attached
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="time-outline" size={12} color={theme.colors.mutedForeground} />
+                    <Text style={[styles.pinMeta, { fontSize: 11 }]}>
+                      {pin.createdAt 
+                        ? new Date(pin.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) 
+                        : 'Unknown'}
+                    </Text>
+                  </View>
+                </View>
               </View>
 
               {/* Actions */}
@@ -689,6 +727,7 @@ const styles = StyleSheet.create({
   pinTypeText: { fontWeight: '800', color: theme.colors.foreground, fontSize: 14 },
   statusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   statusConfirmed: { backgroundColor: '#dcfce7' },
+  statusCompleted: { backgroundColor: '#dbeafe' },
   statusPending: { backgroundColor: '#fef9c3' },
   statusText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   pinDesc: { color: theme.colors.mutedForeground, fontSize: 13, lineHeight: 18 },

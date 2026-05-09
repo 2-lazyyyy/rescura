@@ -91,6 +91,8 @@ export default function PinDetailScreen() {
   const [aiSuggestion, setAiSuggestion] = useState<any | null>(null)
   const [loadError, setLoadError]   = useState<string | null>(null)
   const [address, setAddress]       = useState<string | null>(null)
+  const [imageLoading, setImageLoading] = useState(true)
+  const [imageLoadError, setImageLoadError] = useState(false)
 
   const canEditConfirmed = useMemo(
     () => !!user && user.role === 'admin',
@@ -127,6 +129,16 @@ export default function PinDetailScreen() {
   }, [id, user?.id])
 
   useEffect(() => { load() }, [load])
+
+  // Reset image states whenever the pin (and its image_url) changes
+  useEffect(() => {
+    if (pin?.image_url) {
+      setImageLoading(true)
+      setImageLoadError(false)
+    } else {
+      setImageLoading(false)
+    }
+  }, [pin?.image_url])
 
   useEffect(() => {
     const runSuggestion = async () => {
@@ -286,10 +298,11 @@ export default function PinDetailScreen() {
   // ── Helpers ────────────────────────────────────────────────────────────
   const isPending   = pin.status === 'pending'
   const isConfirmed = pin.status === 'confirmed'
+  const isCompleted = pin.status === 'completed'
   const isDamaged   = pin.type === 'damaged'
 
-  const statusColor = isPending ? '#d97706' : isConfirmed ? '#059669' : '#0ea5e9'
-  const statusBg    = isPending ? '#fef3c7' : isConfirmed ? '#dcfce7' : '#e0f2fe'
+  const statusColor = isPending ? '#d97706' : isConfirmed ? '#059669' : isCompleted ? '#1e40af' : '#64748b'
+  const statusBg    = isPending ? '#fef3c7' : isConfirmed ? '#dcfce7' : isCompleted ? '#dbeafe' : '#f1f5f9'
 
   // ── Main render ────────────────────────────────────────────────────────
   return (
@@ -330,7 +343,29 @@ export default function PinDetailScreen() {
         {/* ===== Pin image ===== */}
         {pin.image_url && (
           <View style={styles.imageCard}>
-            <Image source={{ uri: pin.image_url }} style={styles.pinImage} resizeMode="cover" />
+            {!imageLoadError ? (
+              <>
+                <Image
+                  source={{ uri: pin.image_url }}
+                  style={styles.pinImage}
+                  resizeMode="cover"
+                  onLoadStart={() => { setImageLoading(true); setImageLoadError(false) }}
+                  onLoad={() => setImageLoading(false)}
+                  onError={() => { setImageLoading(false); setImageLoadError(true) }}
+                />
+                {imageLoading && (
+                  <View style={styles.imageLoadingOverlay}>
+                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.imageErrorState}>
+                <Ionicons name="image-outline" size={32} color={theme.colors.mutedForeground} />
+                <Text style={styles.imageErrorText}>Photo unavailable</Text>
+                <Text style={styles.imageErrorSub}>The image could not be loaded</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -598,6 +633,10 @@ const styles = StyleSheet.create({
   card:      { backgroundColor: theme.colors.card, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 20, padding: 16, gap: 2 },
   imageCard: { backgroundColor: theme.colors.card, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 20, overflow: 'hidden', height: 240 },
   pinImage:  { width: '100%', height: '100%' },
+  imageLoadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.6)' },
+  imageErrorState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 },
+  imageErrorText: { fontSize: 14, fontWeight: '700', color: theme.colors.mutedForeground },
+  imageErrorSub:  { fontSize: 12, color: theme.colors.mutedForeground, textAlign: 'center' },
   cardTitle: { fontSize: 13, fontWeight: '700', color: theme.colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
 
   // AI Box Styles

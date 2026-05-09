@@ -185,6 +185,7 @@ export default function PinComposerScreen() {
     }
     setIsSubmitting(true)
     try {
+      // Step 1: Create the pin
       const result = await createPin({
         type, phone, description,
         latitude: lat, longitude: lng,
@@ -193,14 +194,35 @@ export default function PinComposerScreen() {
       })
       if (!result.success || !result.pin) throw new Error(result.error || 'Failed to create pin')
 
+      // Step 2: Create pin items (if any)
       if (selectedItems.length > 0) {
         await createPinItems(result.pin.id, selectedItems.map((i) => ({ item_id: i.item_id, requested_qty: i.qty })))
       }
-      if (imageUri) {
+
+      // Step 3: Upload photo and link it to pin
+      let imageUploaded = false
+      try {
         const upload = await uploadPinImage(imageUri, result.pin.id)
-        if (upload.success && upload.publicUrl) await updatePinImageUrl(result.pin.id, upload.publicUrl)
+        if (upload.success && upload.publicUrl) {
+          await updatePinImageUrl(result.pin.id, upload.publicUrl)
+          imageUploaded = true
+          console.log('[pin] Image uploaded and linked:', upload.publicUrl)
+        } else {
+          console.warn('[pin] Image upload returned failure:', upload.error)
+        }
+      } catch (uploadErr: any) {
+        console.error('[pin] Image upload threw:', uploadErr)
       }
-      Alert.alert('✅ Success', 'Your pin has been created. Rescue teams have been notified.')
+
+      if (imageUploaded) {
+        Alert.alert('✅ Success', 'Your pin has been created with photo. Rescue teams have been notified.')
+      } else {
+        Alert.alert(
+          '⚠️ Pin Created',
+          'Your pin was saved but the photo could not be uploaded. You can try re-submitting with the photo later.',
+          [{ text: 'OK' }]
+        )
+      }
       router.back()
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create pin')
@@ -208,6 +230,7 @@ export default function PinComposerScreen() {
       setIsSubmitting(false)
     }
   }
+
 
   const isDamaged = type === 'damaged'
 
